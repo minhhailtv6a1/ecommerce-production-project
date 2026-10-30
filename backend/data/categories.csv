@@ -1,0 +1,43 @@
+id,slug,name,description,display_order,is_active,created_at
+00,dam-vay-nu,Đầm / Váy Nữ,Danh mục chuẩn 00: Đầm / Váy Nữ.,0,true,2025-01-01T00:00:00+00:00
+01,dam-dang-dai-maxi,Đầm Dáng Dài / Maxi,Danh mục chuẩn 01: Đầm Dáng Dài / Maxi.,1,true,2025-01-01T00:00:00+00:00
+02,ao-thun-ao-phong,Áo Thun / Áo Phông,Danh mục chuẩn 02: Áo Thun / Áo Phông.,2,true,2025-01-01T00:00:00+00:00
+03,ao-ni-hoodie-ao-len,"Áo Nỉ, Hoodie & Áo Len","Danh mục chuẩn 03: Áo Nỉ, Hoodie & Áo Len.",3,true,2025-01-01T00:00:00+00:00
+04,quan-jeans-nu,Quần Jeans Nữ,Danh mục chuẩn 04: Quần Jeans Nữ.,4,true,2025-01-01T00:00:00+00:00
+05,nhan-trang-suc,Nhẫn & Trang Sức,Danh mục chuẩn 05: Nhẫn & Trang Sức.,5,true,2025-01-01T00:00:00+00:00
+06,bong-tai-khuyen-tai,Bông Tai / Khuyên Tai,Danh mục chuẩn 06: Bông Tai / Khuyên Tai.,6,true,2025-01-01T00:00:00+00:00
+07,mu-non-thoi-trang,Mũ & Nón Thời Trang,Danh mục chuẩn 07: Mũ & Nón Thời Trang.,7,true,2025-01-01T00:00:00+00:00
+08,vi-bop-tien,Ví & Bóp Tiền,Danh mục chuẩn 08: Ví & Bóp Tiền.,8,true,2025-01-01T00:00:00+00:00
+09,vali-tui-du-lich,Vali & Túi Du Lịch,Danh mục chuẩn 09: Vali & Túi Du Lịch.,9,true,2025-01-01T00:00:00+00:00
+10,op-lung-phu-kien-dien-thoai,Ốp Lưng & Phụ Kiện Điện Thoại,Danh mục chuẩn 10: Ốp Lưng & Phụ Kiện Điện Thoại.,10,true,2025-01-01T00:00:00+00:00
+11,dien-thoai-may-tinh-bang,Điện Thoại & Máy Tính Bảng,Danh mục chuẩn 11: Điện Thoại & Máy Tính Bảng.,11,true,2025-01-01T00:00:00+00:00
+12,dong-ho-treo-tuong-de-ban,Đồng Hồ Treo Tường & Để Bàn,Danh mục chuẩn 12: Đồng Hồ Treo Tường & Để Bàn.,12,true,2025-01-01T00:00:00+00:00
+13,do-dung-cho-be-an-dam,Đồ Dùng Cho Bé Ăn Dặm,Danh mục chuẩn 13: Đồ Dùng Cho Bé Ăn Dặm.,13,true,2025-01-01T00:00:00+00:00
+14,noi-com-dien-bep-dien,Nồi Cơm Điện & Bếp Điện,Danh mục chuẩn 14: Nồi Cơm Điện & Bếp Điện.,14,true,2025-01-01T00:00:00+00:00
+15,ca-phe-dung-cu-pha-che,Cà Phê & Dụng Cụ Pha Chế,Danh mục chuẩn 15: Cà Phê & Dụng Cụ Pha Chế.,15,true,2025-01-01T00:00:00+00:00
+16,giay-de-bang-giay-bup-be,Giày Đế Bằng & Giày Búp Bê,Danh mục chuẩn 16: Giày Đế Bằng & Giày Búp Bê.,16,true,2025-01-01T00:00:00+00:00
+17,giay-cao-got-sandal-nu,Giày Cao Gót & Sandal Nữ,Danh mục chuẩn 17: Giày Cao Gót & Sandal Nữ.,17,true,2025-01-01T00:00:00+00:00
+18,tu-lanh-may-lanh,Tủ Lạnh & Máy Lạnh,Danh mục chuẩn 18: Tủ Lạnh & Máy Lạnh.,18,true,2025-01-01T00:00:00+00:00
+19,the-nho-usb-luu-tru,Thẻ Nhớ & USB Lưu Trữ,Danh mục chuẩn 19: Thẻ Nhớ & USB Lưu Trữ.,19,true,2025-01-01T00:00:00+00:00
+20,ban-ghe-noi-that,Bàn Ghế & Nội Thất,Danh mục chuẩn 20: Bàn Ghế & Nội Thất.,20,true,2025-01-01T00:00:00+00:00
+21,dung-cu-the-thao-vot,Dụng Cụ Thể Thao Vợt,Danh mục chuẩn 21: Dụng Cụ Thể Thao Vợt.,21,true,2025-01-01T00:00:00+00:00
+22,mu-bao-hiem-do-bao-ho,Mũ Bảo Hiểm & Đồ Bảo Hộ,Danh mục chuẩn 22: Mũ Bảo Hiểm & Đồ Bảo Hộ.,22,true,2025-01-01T00:00:00+00:00
+23,gang-tay-thoi-trang-bao-ho,Găng Tay Thời Trang & Bảo Hộ,Danh mục chuẩn 23: Găng Tay Thời Trang & Bảo Hộ.,23,true,2025-01-01T00:00:00+00:00
+24,dong-ho-deo-tay,Đồng Hồ Đeo Tay,Danh mục chuẩn 24: Đồng Hồ Đeo Tay.,24,true,2025-01-01T00:00:00+00:00
+25,that-lung-day-nit,Thắt Lưng / Dây Nịt,Danh mục chuẩn 25: Thắt Lưng / Dây Nịt.,25,true,2025-01-01T00:00:00+00:00
+26,tai-nghe-thiet-bi-am-thanh,Tai Nghe & Thiết Bị Âm Thanh,Danh mục chuẩn 26: Tai Nghe & Thiết Bị Âm Thanh.,26,true,2025-01-01T00:00:00+00:00
+27,mo-hinh-xe-do-choi-phuong-tien,Mô Hình Xe & Đồ Chơi Phương Tiện,Danh mục chuẩn 27: Mô Hình Xe & Đồ Chơi Phương Tiện.,27,true,2025-01-01T00:00:00+00:00
+28,ao-khoac-nam-nu,Áo Khoác Nam Nữ,Danh mục chuẩn 28: Áo Khoác Nam Nữ.,28,true,2025-01-01T00:00:00+00:00
+29,quan-nam,Quần Nam,Danh mục chuẩn 29: Quần Nam.,29,true,2025-01-01T00:00:00+00:00
+30,giay-the-thao-sneaker,Giày Thể Thao & Sneaker,Danh mục chuẩn 30: Giày Thể Thao & Sneaker.,30,true,2025-01-01T00:00:00+00:00
+31,banh-keo-do-an-vat,Bánh Kẹo & Đồ Ăn Vặt,Danh mục chuẩn 31: Bánh Kẹo & Đồ Ăn Vặt.,31,true,2025-01-01T00:00:00+00:00
+32,khau-trang-vat-tu-y-te,Khẩu Trang & Vật Tư Y Tế,Danh mục chuẩn 32: Khẩu Trang & Vật Tư Y Tế.,32,true,2025-01-01T00:00:00+00:00
+33,gel-sat-khuan-nuoc-rua-tay,Gel Sát Khuẩn & Nước Rửa Tay,Danh mục chuẩn 33: Gel Sát Khuẩn & Nước Rửa Tay.,33,true,2025-01-01T00:00:00+00:00
+34,my-pham-trang-diem,Mỹ Phẩm & Trang Điểm,Danh mục chuẩn 34: Mỹ Phẩm & Trang Điểm.,34,true,2025-01-01T00:00:00+00:00
+35,nuoc-hoa-xit-thom,Nước Hoa & Xịt Thơm,Danh mục chuẩn 35: Nước Hoa & Xịt Thơm.,35,true,2025-01-01T00:00:00+00:00
+36,dung-cu-ve-sinh-sua-chua-nha-cua,Dụng Cụ Vệ Sinh & Sửa Chữa Nhà Cửa,Danh mục chuẩn 36: Dụng Cụ Vệ Sinh & Sửa Chữa Nhà Cửa.,36,true,2025-01-01T00:00:00+00:00
+37,laptop-phu-kien-may-tinh,Laptop & Phụ Kiện Máy Tính,Danh mục chuẩn 37: Laptop & Phụ Kiện Máy Tính.,37,true,2025-01-01T00:00:00+00:00
+38,bat-dia-ban-an,Bát Đĩa & Bàn Ăn,Danh mục chuẩn 38: Bát Đĩa & Bàn Ăn.,38,true,2025-01-01T00:00:00+00:00
+39,binh-hoa-decor-trang-tri,Bình Hoa & Decor Trang Trí,Danh mục chuẩn 39: Bình Hoa & Decor Trang Trí.,39,true,2025-01-01T00:00:00+00:00
+40,thiet-bi-phong-tam-voi-sen,Thiết Bị Phòng Tắm & Vòi Sen,Danh mục chuẩn 40: Thiết Bị Phòng Tắm & Vòi Sen.,40,true,2025-01-01T00:00:00+00:00
+41,sofa-ghe-phong-khach,Sofa & Ghế Phòng Khách,Danh mục chuẩn 41: Sofa & Ghế Phòng Khách.,41,true,2025-01-01T00:00:00+00:00

@@ -1,0 +1,49 @@
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+.pytest-tmp
+pytest-cache-files-*
+.artifact-csv-check
+.mypy_cache
+.ruff_cache
+
+# Virtual environments
+myenv
+.venv
+venv
+env
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Git & Docker
+.git
+.gitignore
+Dockerfile*
+docker-compose*.yml
+
+# Coverage & test artifacts
+.coverage
+htmlcov
+tests
+
+# Logs and OS
+*.log
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+
+# Large model binaries and checkpoints (can be mounted via volume)
+artifacts/*.pt
+artifacts/*.pth
+artifacts/*.ckpt
+artifacts/*.checkpoint
+artifacts/**/*.pt
+artifacts/**/*.pth
+artifacts/**/*.ckpt
+artifacts/**/*.checkpoint
+!artifacts/.gitkeep

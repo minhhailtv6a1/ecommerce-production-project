@@ -1,0 +1,62 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ecommerce-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      - APP_ENV=production
+      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+      - IMAGE_SEARCH_DEFAULT_LIMIT=50
+      - IMAGE_SEARCH_MAX_LIMIT=50
+      - IMAGE_SEARCH_TOP_K=50
+      - CLASSIFIER_ARTIFACT_ROOT=artifacts/classifiers
+      - CLASSIFIER_DEVICE=auto
+      - CLASSIFIER_DEFAULT_MODEL=none
+      - CLASSIFIER_TOP_K=5
+      - CLASSIFIER_MAX_TOP_K=10
+    volumes:
+      # Mount versioned classifier manifests/checkpoints without baking large weights into the image
+      - ./backend/artifacts:/app/artifacts
+      # Mount catalog data CSVs
+      - ./backend/data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - ecommerce-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Browser client communicates with backend at localhost:8000
+        - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+        - NEXT_PUBLIC_SHOW_TEST_CATEGORIES=true
+    container_name: ecommerce-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ecommerce-network
+
+networks:
+  ecommerce-network:
+    driver: bridge
