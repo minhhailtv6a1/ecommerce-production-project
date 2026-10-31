@@ -25,15 +25,12 @@ REQUIRED_USER_COLUMNS = {
 CREATE_USERS_SQL = """
 CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY,
-    email VARCHAR(320) NOT NULL,
+    email VARCHAR(320) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT users_email_lowercase CHECK (email = LOWER(email))
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx
-    ON public.users (email);
 """
 
 
@@ -71,6 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             existed = _users_table_exists(connection)
             with connection.cursor() as cursor:
                 cursor.execute(CREATE_USERS_SQL)
+                _ensure_email_unique_index(cursor)
             connection.commit()
             _validate_users_columns(connection)
         finally:
@@ -117,6 +115,34 @@ def _validate_users_columns(connection: object) -> None:
         raise RuntimeError(
             "Existing public.users table is incompatible; missing columns: "
             + ", ".join(missing)
+        )
+
+
+def _ensure_email_unique_index(cursor: object) -> None:
+    """Create email uniqueness only when no equivalent unique index exists."""
+    cursor.execute(  # type: ignore[attr-defined]
+        """
+        SELECT 1
+        FROM pg_index i
+        JOIN pg_class t ON t.oid = i.indrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'public'
+          AND t.relname = 'users'
+          AND i.indisunique
+          AND i.indpred IS NULL
+          AND i.indexprs IS NULL
+          AND i.indnkeyatts = 1
+          AND (
+              SELECT a.attname
+              FROM pg_attribute a
+              WHERE a.attrelid = t.oid AND a.attnum = i.indkey[0]
+          ) = 'email'
+        LIMIT 1
+        """
+    )
+    if cursor.fetchone() is None:  # type: ignore[attr-defined]
+        cursor.execute(  # type: ignore[attr-defined]
+            "CREATE UNIQUE INDEX users_email_unique_idx ON public.users (email)"
         )
 
 

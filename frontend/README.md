@@ -75,6 +75,7 @@ Test không yêu cầu backend live. Bộ test hiện bao phủ:
 - MIME và giới hạn 10 MiB của ảnh upload.
 - Product card render từ dữ liệu backend.
 - Empty state và API error state.
+- Parser cart/order, khả năng checkout và nhãn trạng thái đơn hàng.
 
 ## Route frontend
 
@@ -86,6 +87,10 @@ Test không yêu cầu backend live. Bộ test hiện bao phủ:
 | `/visual-search` | Upload/preview ảnh, chọn danh mục thủ công và tìm sản phẩm tương đồng |
 | `/login` | Đăng nhập và giữ token trong memory |
 | `/register` | Đăng ký và giữ token trong memory |
+| `/cart` | Giỏ hàng server-side, cập nhật số lượng và xóa variant |
+| `/checkout` | Form giao hàng và đặt đơn COD |
+| `/orders` | Lịch sử đơn hàng của user hiện tại |
+| `/orders/[orderId]` | Chi tiết và trạng thái đơn hàng authoritative |
 
 Sau khi login/register, header có nút **Kiểm tra /me** để gọi endpoint được bảo vệ. Nút **Đăng xuất** chỉ xóa token khỏi state frontend; backend không có token revocation.
 
@@ -121,6 +126,20 @@ Sau khi login/register, header có nút **Kiểm tra /me** để gọi endpoint 
 - `POST /auth/register`
 - `POST /auth/login`
 - `GET /auth/me`
+- `GET /cart`
+- `POST /cart/items`
+- `PATCH /cart/items/{variant_id}`
+- `DELETE /cart/items/{variant_id}`
+- `POST /orders`
+- `GET /orders`
+- `GET /orders/{order_id}`
+
+Giỏ hàng và đơn hàng chỉ hoạt động khi có phiên đăng nhập trong memory. Product detail
+cho phép chọn variant thật và số lượng trong giới hạn tồn kho. Checkout hiện chỉ hỗ trợ
+COD; giá, khả dụng, tồn kho và tổng tiền được backend kiểm tra lại trong transaction.
+Nếu request tạo đơn bị lỗi mạng và kết quả không xác định, UI không gửi lại tự động mà
+hướng người dùng kiểm tra `/orders` để tránh tạo đơn trùng. Backend hiện chưa có
+idempotency key cho checkout.
 
 Luồng visual search là:
 
@@ -179,7 +198,8 @@ src/
 
 ## Giới hạn hiện tại
 
-- Không có cart, checkout, payment, favorites hoặc orders.
+- Checkout chỉ hỗ trợ COD; chưa có online payment, voucher, phí vận chuyển hoặc automatic fulfilment.
+- Backend chưa có idempotency key cho `POST /orders`; frontend chặn submit lặp trong phiên và xử lý lỗi mạng theo trạng thái không xác định.
 - Hiện chỉ AlexNet có artifact thật; ResNet50 và ViT được hiển thị disabled cho tới
   khi backend công bố `available=true`.
 - Không có refresh token, backend logout/revocation, forgot password hoặc email verification.

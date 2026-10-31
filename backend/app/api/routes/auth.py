@@ -126,6 +126,29 @@ def login(
     return _token_response(result.user, result.token.value, result.token.expires_in)
 
 
+def require_bearer_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str:
+    """Reject missing credentials before database-backed auth is initialized."""
+    if credentials is None or credentials.scheme.casefold() != "bearer":
+        raise _unauthorized("Authentication is required")
+    return credentials.credentials
+
+
+def require_current_user(
+    token: str = Depends(require_bearer_token),
+    service: AuthService = Depends(get_auth_service),
+) -> UserRecord:
+    """Authenticate protected endpoints and return the active user record."""
+    try:
+        user = service.current_user(token)
+    except UnauthorizedError as exc:
+        raise _unauthorized("Invalid or expired access token") from exc
+    except UserRepositoryError as exc:
+        raise _database_unavailable() from exc
+    return user
+
+
 @router.get(
     "/me",
     response_model=UserResponse,
@@ -133,17 +156,8 @@ def login(
     summary="Get the authenticated user",
 )
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    service: AuthService = Depends(get_auth_service),
+    user: UserRecord = Depends(require_current_user),
 ) -> UserResponse:
-    if credentials is None or credentials.scheme.casefold() != "bearer":
-        raise _unauthorized("Authentication is required")
-    try:
-        user = service.current_user(credentials.credentials)
-    except UnauthorizedError as exc:
-        raise _unauthorized("Invalid or expired access token") from exc
-    except UserRepositoryError as exc:
-        raise _database_unavailable() from exc
     return UserResponse.model_validate(user)
 
 

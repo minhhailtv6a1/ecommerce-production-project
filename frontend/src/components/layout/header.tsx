@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/features/auth/auth-provider";
+import { useCart } from "@/features/commerce/cart-provider";
 import { asApiError } from "@/lib/api/api-error";
 
 const navigation = [
@@ -15,6 +16,7 @@ const navigation = [
 export function Header() {
   const pathname = usePathname();
   const { session, logout, verifySession } = useAuth();
+  const { state: cartState } = useCart();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
@@ -68,9 +70,48 @@ export function Header() {
               {item.label}
             </Link>
           ))}
+          {session ? (
+            <Link
+              href="/orders"
+              aria-current={pathname.startsWith("/orders") ? "page" : undefined}
+            >
+              Đơn hàng
+            </Link>
+          ) : null}
         </nav>
 
         <div className="auth-nav">
+          <Link
+            className="cart-link"
+            href="/cart"
+            aria-current={pathname === "/cart" || pathname === "/checkout" ? "page" : undefined}
+            aria-label={
+              cartState.status === "ready"
+                ? `Giỏ hàng, ${cartState.cart.item_count} sản phẩm`
+                : "Giỏ hàng"
+            }
+          >
+            <svg
+              className="cart-icon"
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M3 4h2l2.15 10.05a2 2 0 0 0 1.96 1.58h7.96a2 2 0 0 0 1.95-1.55L21 7H6.05M9.5 20a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm9 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {cartState.status === "ready" ? (
+              <strong aria-live="polite" aria-atomic="true">
+                {cartState.cart.item_count}
+              </strong>
+            ) : null}
+          </Link>
           {session ? (
             <div className="session-menu">
               <span className="session-email" title={session.user.email}>

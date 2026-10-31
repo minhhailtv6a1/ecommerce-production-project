@@ -1,6 +1,6 @@
 # Image-Based Product Search Backend
 
-This directory contains the FastAPI backend for an image-based product search system. It provides health, custom JWT authentication, catalog, product-detail, and CLIP image-search APIs plus operational Supabase/Pinecone pipelines. External clients and CLIP are initialized lazily, so the health endpoint does not depend on them.
+This directory contains the FastAPI backend for an image-based product search system. It provides health, custom JWT authentication, catalog, cart, COD checkout, order-history, product-detail, and CLIP image-search APIs plus operational Supabase/Pinecone pipelines. External clients and CLIP are initialized lazily, so the health endpoint does not depend on them.
 
 ## Requirements
 
@@ -93,6 +93,16 @@ python -m scripts.create_auth_schema
 python -m scripts.create_auth_schema --apply
 ```
 
+After the auth and catalog tables exist, preview and create the cart/order tables:
+
+```powershell
+python -m scripts.create_commerce_schema
+python -m scripts.create_commerce_schema --apply
+```
+
+This creates only `cart_items`, `orders`, `order_items`, and their indexes. It
+does not delete catalog, user, cart, or order data.
+
 ## Generate and import mock catalog data
 
 The catalog seed uses the first 200 supported images, sorted by relative path,
@@ -183,6 +193,12 @@ Available URLs:
 - Categories: `GET http://127.0.0.1:8000/api/v1/categories`
 - Product catalog: `GET http://127.0.0.1:8000/api/v1/products`
 - Product detail: `GET http://127.0.0.1:8000/api/v1/products/{id-or-slug}`
+- Current cart: `GET http://127.0.0.1:8000/api/v1/cart`
+- Add cart item: `POST http://127.0.0.1:8000/api/v1/cart/items`
+- Update/remove cart item: `PATCH/DELETE http://127.0.0.1:8000/api/v1/cart/items/{variant_id}`
+- Checkout COD: `POST http://127.0.0.1:8000/api/v1/orders`
+- Order history: `GET http://127.0.0.1:8000/api/v1/orders`
+- Order detail: `GET http://127.0.0.1:8000/api/v1/orders/{order_id}`
 - Classifier capabilities: `GET http://127.0.0.1:8000/api/v1/image-search/classifiers`
 - Image classification: `POST http://127.0.0.1:8000/api/v1/image-search/classify`
 - Visual product search: `POST http://127.0.0.1:8000/api/v1/image-search/search`
@@ -212,6 +228,21 @@ Authorization: Bearer <access_token>
 ```
 
 Passwords are stored only as Argon2 hashes. JWTs are signed with HS256 and include issuer, audience, issued-at, expiration, subject, type, and token ID claims. This initial auth phase does not yet provide refresh tokens, password reset, email verification, or server-side token revocation.
+
+Cart and order endpoints require the same Bearer token. Add a product variant
+with `{"variant_id": "<uuid>", "quantity": 1}`. Checkout accepts
+`receiver_name`, `phone`, `shipping_address`, and optional `note`. Checkout is a
+single database transaction: it locks and revalidates variants, uses current
+server-side prices, checks stock, creates immutable order-item snapshots,
+decrements inventory, and clears the cart. The initial payment method is COD and
+new orders have `pending` status; online payment, vouchers, shipping fees, and
+automatic fulfilment are intentionally out of scope.
+
+Catalog hydration passes native UUID parameters to PostgreSQL so primary and
+foreign-key indexes remain usable. The default newest listing selects the
+requested page before variant aggregation and returns the total in the same
+query, avoiding a second Supabase round trip for normal pages. Operational
+index cleanup is documented in `scripts/README.md`.
 
 Catalog supports repeated `category_ids`, `size`, `color`, `brand`, minimum and
 maximum price, stock state, sorting (`newest`, `price_asc`, `price_desc`), page,
