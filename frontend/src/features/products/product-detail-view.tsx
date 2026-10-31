@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ApiErrorPanel } from "@/components/ui/api-error-panel";
 import { categoryLabel } from "@/domain/categories";
+import { useAuth } from "@/features/auth/auth-provider";
+import { useCart } from "@/features/commerce/cart-provider";
 import { asApiError, type ApiError } from "@/lib/api/api-error";
 import { getProduct } from "@/lib/api/products.api";
 import { SHOW_TEST_CATEGORIES } from "@/lib/env";
@@ -18,12 +20,26 @@ type DetailState =
 export function ProductDetailView({ identifier }: { identifier: string }) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string>("");
+  const [quantity, setQuantity] = useState(1);
+  const [cartFeedback, setCartFeedback] = useState<
+    { kind: "success" | "error"; message: string } | null
+  >(null);
+  const { session } = useAuth();
+  const { addItem, pendingVariantIds } = useCart();
 
   const load = useCallback(
     (signal?: AbortSignal) => {
       getProduct(identifier, signal)
         .then((product) => {
           setSelectedImageId(product.images[0]?.id ?? product.primary_image.id);
+          setSelectedVariantId(
+            product.variants.find(
+              (variant) => variant.is_active && variant.inventory_quantity > 0,
+            )?.id ?? "",
+          );
+          setQuantity(1);
+          setCartFeedback(null);
           setState({ status: "ready", product });
         })
         .catch((error: unknown) => {
@@ -63,6 +79,29 @@ export function ProductDetailView({ identifier }: { identifier: string }) {
   const { product } = state;
   const gallery = product.images.length > 0 ? product.images : [product.primary_image];
   const selectedImage = gallery.find((image) => image.id === selectedImageId) ?? gallery[0];
+  const purchasableVariants = product.variants.filter(
+    (variant) => variant.is_active && variant.inventory_quantity > 0,
+  );
+  const selectedVariant = purchasableVariants.find(
+    (variant) => variant.id === selectedVariantId,
+  );
+  const isAdding = selectedVariant
+    ? pendingVariantIds.has(selectedVariant.id)
+    : false;
+
+  async function handleAddToCart() {
+    if (!selectedVariant) return;
+    setCartFeedback(null);
+    try {
+      await addItem(selectedVariant.id, quantity);
+      setCartFeedback({
+        kind: "success",
+        message: `Đã thêm ${quantity} sản phẩm vào giỏ hàng.`,
+      });
+    } catch (error) {
+      setCartFeedback({ kind: "error", message: asApiError(error).message });
+    }
+  }
 
   return (
     <div className="container page-section">
@@ -104,6 +143,88 @@ export function ProductDetailView({ identifier }: { identifier: string }) {
           </div>
           <div className={product.in_stock ? "detail-stock in-stock" : "detail-stock out-stock"}>
             <span aria-hidden="true" />{product.in_stock ? "Sản phẩm đang còn hàng" : "Sản phẩm hiện hết hàng"}
+          </div>
+          <div className="purchase-panel">
+            <div className="purchase-panel-heading">
+              <div>
+                <span className="eyebrow">Mua sản phẩm</span>
+                <h2>Chọn phiên bản</h2>
+              </div>
+              <Link className="text-link" href="/cart">Xem giỏ hàng</Link>
+            </div>
+            {purchasableVariants.length > 0 ? (
+              <>
+                <label htmlFor="purchase-variant">Màu sắc / kích thước</label>
+                <select
+                  id="purchase-variant"
+                  value={selectedVariantId}
+                  onChange={(event) => {
+                    setSelectedVariantId(event.target.value);
+                    setQuantity(1);
+                    setCartFeedback(null);
+                  }}
+                >
+                  {purchasableVariants.map((variant) => (
+                    <option key={variant.id} value={variant.id}>
+                      {[variant.color, variant.size, variant.sku]
+                        .filter(Boolean)
+                        .join(" · ")} — {formatPrice(variant.price, product.currency)}
+                    </option>
+                  ))}
+                </select>
+                {selectedVariant ? (
+                  <p className="purchase-stock">
+                    Còn {selectedVariant.inventory_quantity} sản phẩm cho lựa chọn này.
+                  </p>
+                ) : null}
+                <div className="purchase-actions">
+                  <label htmlFor="purchase-quantity">Số lượng</label>
+                  <input
+                    id="purchase-quantity"
+                    type="number"
+                    min={1}
+                    max={Math.min(99, selectedVariant?.inventory_quantity ?? 1)}
+                    value={quantity}
+                    onChange={(event) => {
+                      const value = Number(event.target.value);
+                      setQuantity(
+                        Math.max(
+                          1,
+                          Math.min(
+                            Math.min(99, selectedVariant?.inventory_quantity ?? 1),
+                            Number.isFinite(value) ? value : 1,
+                          ),
+                        ),
+                      );
+                    }}
+                  />
+                  {session ? (
+                    <button
+                      className="button button-primary"
+                      type="button"
+                      onClick={handleAddToCart}
+                      disabled={!selectedVariant || isAdding}
+                    >
+                      {isAdding ? "Đang thêm…" : "Thêm vào giỏ"}
+                    </button>
+                  ) : (
+                    <Link className="button button-primary" href="/login">
+                      Đăng nhập để mua
+                    </Link>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="muted">Sản phẩm chưa có phiên bản khả dụng để đặt mua.</p>
+            )}
+            {cartFeedback ? (
+              <p
+                className={`purchase-feedback ${cartFeedback.kind}`}
+                role={cartFeedback.kind === "error" ? "alert" : "status"}
+              >
+                {cartFeedback.message}
+              </p>
+            ) : null}
           </div>
           <div className="detail-description">
             <h2>Mô tả sản phẩm</h2>

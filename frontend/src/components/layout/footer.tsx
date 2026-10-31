@@ -7,28 +7,33 @@ export function Footer() {
         <div>
           <p className="footer-brand">Lumi Market</p>
           <p className="muted">
-            Không gian mua sắm trực tuyến dành cho những món đồ hợp gu, dễ tìm
-            và dễ lựa chọn hơn từ hình ảnh.
+            Không gian mua sắm trực tuyến giúp bạn tìm và lựa chọn sản phẩm dễ
+            dàng hơn từ hình ảnh.
           </p>
         </div>
         <div>
           <p className="footer-title">Mua sắm</p>
           <Link href="/products">Tất cả sản phẩm</Link>
           <Link href="/visual-search">Tìm sản phẩm bằng ảnh</Link>
+          <Link href="/cart">Giỏ hàng</Link>
         </div>
         <div>
-          <p className="footer-title">Về Lumi</p>
-          <p className="muted">Sản phẩm được trình bày với giá, hình ảnh và lựa chọn hiện có.</p>
-          <p className="muted">Thông tin doanh nghiệp đang được hoàn thiện trước ngày mở bán.</p>
+          <p className="footer-title">Tài khoản</p>
+          <Link href="/orders">Đơn hàng của tôi</Link>
+          <Link href="/login">Đăng nhập</Link>
+          <Link href="/register">Đăng ký</Link>
         </div>
         <div>
-          <p className="footer-title">Chăm sóc khách hàng</p>
-          <p className="muted">Chính sách vận chuyển, đổi trả và bảo mật sẽ được công bố trước khi cửa hàng chính thức nhận đơn.</p>
+          <p className="footer-title">Thanh toán</p>
+          <p className="muted">
+            Đơn hàng hiện hỗ trợ thanh toán khi nhận hàng (COD). Chưa hỗ trợ
+            thanh toán trực tuyến, voucher hoặc phí vận chuyển.
+          </p>
         </div>
       </div>
       <div className="container footer-bottom">
         <span>© 2026 Lumi Market.</span>
-        <span>Giai đoạn giới thiệu sản phẩm — chưa nhận thanh toán trực tuyến.</span>
+        <span>Giá và tồn kho được xác nhận lại khi đặt hàng.</span>
       </div>
     </footer>
   );

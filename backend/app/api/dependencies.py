@@ -13,6 +13,7 @@ from app.repositories.database import (
     open_database_connection,
 )
 from app.repositories.products import ProductRepository
+from app.repositories.commerce import CommerceRepository
 from app.repositories.pinecone import (
     PineconeDocumentRepository,
     PineconeSdkUnavailableError,
@@ -32,6 +33,7 @@ from app.services.pinecone_index import (
     validate_pinecone_index,
 )
 from app.services.product_service import ProductService
+from app.services.commerce import CommerceService
 from app.services.storage_upload import SupabaseStorageUrlResolver
 
 
@@ -85,6 +87,21 @@ def get_product_repository() -> Iterator[ProductRepository]:
         ) from exc
     try:
         yield ProductRepository(connection)
+    finally:
+        connection.close()
+
+
+def get_commerce_service() -> Iterator[CommerceService]:
+    """Provide a request-scoped transactional cart/order service."""
+    try:
+        connection = open_database_connection()
+    except (DatabaseConfigurationError, DatabaseConnectionError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cart and order database is unavailable",
+        ) from exc
+    try:
+        yield CommerceService(CommerceRepository(connection))
     finally:
         connection.close()
 

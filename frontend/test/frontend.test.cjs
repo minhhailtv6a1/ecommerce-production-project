@@ -51,6 +51,10 @@ const { ApiErrorPanel } = require("../src/components/ui/api-error-panel.tsx");
 const { VisualSearchView } = require("../src/features/visual-search/visual-search-view.tsx");
 const { ClassificationResults } = require("../src/features/visual-search/classification-results.tsx");
 const { getNextEnabledIndex } = require("../src/features/visual-search/classifier-model-select.tsx");
+const { parseCart, parseOrder } = require("../src/lib/api/commerce-parser.ts");
+const { canCheckout, orderStatusLabel } = require("../src/features/commerce/commerce-utils.ts");
+const { OrderStatusBadge } = require("../src/features/commerce/order-status-badge.tsx");
+const { ProductThumbnail } = require("../src/features/commerce/product-thumbnail.tsx");
 
 const product = {
   id: "product-1",
@@ -279,4 +283,107 @@ test("renders distinct empty and error states", () => {
   );
   assert.match(errorHtml, /Product images are temporarily unavailable/);
   assert.match(errorHtml, /request-456/);
+});
+
+test("parses the authoritative cart contract and checkout readiness", () => {
+  const cart = parseCart({
+    items: [
+      {
+        variant_id: "variant-1",
+        product_id: "product-1",
+        product_name: "Áo thun",
+        product_slug: "ao-thun",
+        sku: "SKU-01",
+        color: "Đen",
+        size: "M",
+        unit_price: 120000,
+        currency: "VND",
+        quantity: 2,
+        inventory_quantity: 5,
+        available: true,
+        line_total: 240000,
+      },
+    ],
+    item_count: 2,
+    subtotal: 240000,
+    currency: "VND",
+  });
+  assert.equal(cart.items[0].variant_id, "variant-1");
+  assert.equal(cart.subtotal, 240000);
+  assert.equal(canCheckout(cart), true);
+
+  assert.equal(canCheckout({ ...cart, items: [{ ...cart.items[0], available: false }] }), false);
+  assert.equal(canCheckout({ items: [], item_count: 0, subtotal: 0, currency: null }), false);
+});
+
+test("parses COD order snapshots and maps every supported order status", () => {
+  const order = parseOrder({
+    id: "order-1",
+    status: "pending",
+    payment_method: "cod",
+    receiver_name: "Nguyễn Văn A",
+    phone: "0900000000",
+    shipping_address: "1 Đường Mẫu, TP.HCM",
+    note: null,
+    total_amount: 120000,
+    currency: "VND",
+    created_at: "2026-10-31T08:00:00Z",
+    items: [
+      {
+        id: "item-1",
+        product_id: "product-1",
+        variant_id: "variant-1",
+        product_name: "Áo thun",
+        sku: "SKU-01",
+        color: null,
+        size: "M",
+        unit_price: 120000,
+        quantity: 1,
+        line_total: 120000,
+      },
+    ],
+  });
+  assert.equal(order.payment_method, "cod");
+  assert.equal(order.items[0].product_name, "Áo thun");
+  assert.deepEqual(
+    ["pending", "confirmed", "shipping", "completed", "cancelled"].map(orderStatusLabel),
+    ["Chờ xác nhận", "Đã xác nhận", "Đang giao", "Hoàn tất", "Đã hủy"],
+  );
+
+  const badge = renderToStaticMarkup(React.createElement(OrderStatusBadge, { status: "pending" }));
+  assert.match(badge, /Chờ xác nhận/);
+  assert.match(badge, /status-pending/);
+});
+
+test("rejects unsupported commerce response values", () => {
+  assert.throws(
+    () => parseOrder({
+      id: "order-1",
+      status: "refunded",
+      payment_method: "cod",
+      receiver_name: "A",
+      phone: "0900000000",
+      shipping_address: "Address",
+      note: null,
+      total_amount: 0,
+      currency: "VND",
+      created_at: "2026-10-31T08:00:00Z",
+      items: [],
+    }),
+    /không được hỗ trợ/,
+  );
+});
+
+test("renders the real product image in commerce rows instead of an initial", () => {
+  const html = renderToStaticMarkup(
+    React.createElement(ProductThumbnail, {
+      image: product.primary_image,
+      loading: false,
+      productName: product.name,
+      href: `/products/${product.slug}`,
+    }),
+  );
+  assert.match(html, /signed-image\.jpg/);
+  assert.match(html, /Đầm nữ demo màu đen/);
+  assert.doesNotMatch(html, />Đ</);
 });

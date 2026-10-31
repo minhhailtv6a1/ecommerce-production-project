@@ -91,6 +91,43 @@ key, normalized unique email, Argon2 password-hash field, active flag, and
 creation timestamp. It rejects an existing table that is missing required
 columns.
 
+## Cart and order schema
+
+After the authentication and catalog schemas exist, preview the commerce schema:
+
+```bash
+python -m scripts.create_commerce_schema
+```
+
+Create or validate `public.cart_items`, `public.orders`, and
+`public.order_items`:
+
+```bash
+python -m scripts.create_commerce_schema --apply
+```
+
+The operation is idempotent and does not delete existing data. Orders use COD;
+order items store product name, SKU, option, and price snapshots.
+
+## Application index cleanup
+
+Preview the exact redundant application indexes and their replacements:
+
+```bash
+python -m scripts.optimize_database_indexes
+```
+
+After reviewing the plan, remove only the validated duplicate indexes:
+
+```bash
+python -m scripts.optimize_database_indexes --apply
+```
+
+The script refuses to drop primary-key or constraint-backed indexes and checks
+the expected index definition first. It is idempotent. The retained
+`users_email_key` enforces unique emails, while the retained composite
+`cart_items_pkey (user_id, variant_id)` supports user cart lookups.
+
 ## Pinecone index provisioning
 
 Configure the Pinecone variables in `.env`, then inspect the immutable index plan without making a network request:

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
 import { AuthProvider } from "@/features/auth/auth-provider";
+import { CartProvider } from "@/features/commerce/cart-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,9 +19,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="vi">
       <body>
         <AuthProvider>
-          <Header />
-          <main>{children}</main>
-          <Footer />
+          <CartProvider>
+            <Header />
+            <main>{children}</main>
+            <Footer />
+          </CartProvider>
         </AuthProvider>
       </body>
     </html>

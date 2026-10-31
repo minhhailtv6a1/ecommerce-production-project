@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Literal, Sequence
+from uuid import UUID
 
 
 ProductSort = Literal["newest", "price_asc", "price_desc"]
@@ -48,26 +49,43 @@ class ProductRepository:
         filters: ProductFilters,
     ) -> tuple[list[dict[str, Any]], int]:
         where_sql, params = self._product_where(filters)
+        if filters.sort == "newest":
+            rows = self._list_newest_products(filters, where_sql, params)
+        else:
+            rows = self._list_products_by_price(filters, where_sql, params)
+        if rows:
+            total = int(rows[0].pop("_total"))
+            for row in rows[1:]:
+                row.pop("_total", None)
+            return rows, total
+
+        # Preserve the total for an out-of-range page without adding a second
+        # round trip to the common successful-page path.
         count_row = self._fetchone(
             f"SELECT COUNT(*)::integer AS total FROM public.products p {where_sql}",
             params,
         )
         total = int(count_row["total"]) if count_row else 0
-        if not total:
-            return [], 0
+        return rows, total
 
+    def _list_products_by_price(
+        self,
+        filters: ProductFilters,
+        where_sql: str,
+        params: list[Any],
+    ) -> list[dict[str, Any]]:
         order_sql = {
-            "newest": "p.created_at DESC, p.id",
             "price_asc": "price ASC, p.id",
             "price_desc": "price DESC, p.id",
         }[filters.sort]
-        rows = self._fetchall(
+        return self._fetchall(
             f"""
             SELECT p.id, p.slug, p.name, p.description, p.category_id,
                    p.brand, p.status, p.currency, p.created_at,
                    MIN(v.price)::bigint AS price,
                    MAX(v.compare_at_price)::bigint AS compare_at_price,
-                   COALESCE(SUM(v.inventory_quantity), 0)::bigint AS inventory_quantity
+                   COALESCE(SUM(v.inventory_quantity), 0)::bigint AS inventory_quantity,
+                   COUNT(*) OVER()::integer AS _total
             FROM public.products p
             JOIN public.product_variants v
               ON v.product_id = p.id AND v.is_active = TRUE
@@ -78,11 +96,50 @@ class ProductRepository:
             """,
             [*params, filters.page_size, (filters.page - 1) * filters.page_size],
         )
-        return rows, total
+
+    def _list_newest_products(
+        self,
+        filters: ProductFilters,
+        where_sql: str,
+        params: list[Any],
+    ) -> list[dict[str, Any]]:
+        """Page products before variant aggregation for the common newest sort."""
+        return self._fetchall(
+            f"""
+            WITH product_page AS (
+                SELECT p.id, COUNT(*) OVER()::integer AS total
+                FROM public.products p
+                {where_sql}
+                ORDER BY p.created_at DESC, p.id
+                LIMIT %s OFFSET %s
+            )
+            SELECT p.id, p.slug, p.name, p.description, p.category_id,
+                   p.brand, p.status, p.currency, p.created_at,
+                   MIN(v.price)::bigint AS price,
+                   MAX(v.compare_at_price)::bigint AS compare_at_price,
+                   COALESCE(SUM(v.inventory_quantity), 0)::bigint AS inventory_quantity,
+                   page.total AS _total
+            FROM product_page page
+            JOIN public.products p ON p.id = page.id
+            JOIN public.product_variants v
+              ON v.product_id = p.id AND v.is_active = TRUE
+            GROUP BY p.id, page.total
+            ORDER BY p.created_at DESC, p.id
+            """,
+            [*params, filters.page_size, (filters.page - 1) * filters.page_size],
+        )
 
     def get_product(self, identifier: str) -> dict[str, Any] | None:
+        try:
+            product_id = UUID(identifier)
+        except ValueError:
+            predicate = "p.slug = %s"
+            value: str | UUID = identifier
+        else:
+            predicate = "p.id = %s"
+            value = product_id
         return self._fetchone(
-            """
+            f"""
             SELECT p.id, p.slug, p.name, p.description, p.category_id,
                    p.brand, p.status, p.currency, p.created_at,
                    MIN(v.price)::bigint AS price,
@@ -92,14 +149,15 @@ class ProductRepository:
             JOIN public.product_variants v
               ON v.product_id = p.id AND v.is_active = TRUE
             WHERE p.status = 'published'
-              AND (p.id::text = %s OR p.slug = %s)
+              AND {predicate}
             GROUP BY p.id
             """,
-            [identifier, identifier],
+            [value],
         )
 
     def get_products_by_ids(self, product_ids: Sequence[str]) -> list[dict[str, Any]]:
-        if not product_ids:
+        ids = _valid_uuids(product_ids)
+        if not ids:
             return []
         return self._fetchall(
             """
@@ -111,38 +169,40 @@ class ProductRepository:
             FROM public.products p
             JOIN public.product_variants v
               ON v.product_id = p.id AND v.is_active = TRUE
-            WHERE p.status = 'published' AND p.id::text = ANY(%s)
+            WHERE p.status = 'published' AND p.id = ANY(%s)
             GROUP BY p.id
             """,
-            [list(product_ids)],
+            [ids],
         )
 
     def get_variants(self, product_ids: Sequence[str]) -> list[dict[str, Any]]:
-        if not product_ids:
+        ids = _valid_uuids(product_ids)
+        if not ids:
             return []
         return self._fetchall(
             """
             SELECT id, product_id, sku, color, size, price, compare_at_price,
                    inventory_quantity, is_active
             FROM public.product_variants
-            WHERE product_id::text = ANY(%s) AND is_active = TRUE
+            WHERE product_id = ANY(%s) AND is_active = TRUE
             ORDER BY product_id, created_at, id
             """,
-            [list(product_ids)],
+            [ids],
         )
 
     def get_images(self, product_ids: Sequence[str]) -> list[dict[str, Any]]:
-        if not product_ids:
+        ids = _valid_uuids(product_ids)
+        if not ids:
             return []
         return self._fetchall(
             """
             SELECT id, product_id, storage_path, public_url, alt_text,
                    sort_order, is_primary
             FROM public.product_images
-            WHERE product_id::text = ANY(%s)
+            WHERE product_id = ANY(%s)
             ORDER BY product_id, is_primary DESC, sort_order, id
             """,
-            [list(product_ids)],
+            [ids],
         )
 
     def _product_where(self, filters: ProductFilters) -> tuple[str, list[Any]]:
@@ -200,3 +260,18 @@ class ProductRepository:
         with self.connection.cursor(row_factory=dict_row) as cursor:
             cursor.execute(sql, params)
             return cursor.fetchone()
+
+
+def _valid_uuids(values: Sequence[str]) -> list[UUID]:
+    """Return valid, de-duplicated UUIDs while preserving input order."""
+    result: list[UUID] = []
+    seen: set[UUID] = set()
+    for value in values:
+        try:
+            parsed = UUID(str(value))
+        except ValueError:
+            continue
+        if parsed not in seen:
+            seen.add(parsed)
+            result.append(parsed)
+    return result

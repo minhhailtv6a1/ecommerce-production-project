@@ -57,6 +57,3 @@ artifacts/*
 *.ckpt
 *.checkpoint
 *.onnx
-
-# docker-compose file
-docker-compose.yml
