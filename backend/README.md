@@ -199,8 +199,8 @@ Available URLs:
 - Checkout COD: `POST http://127.0.0.1:8000/api/v1/orders`
 - Order history: `GET http://127.0.0.1:8000/api/v1/orders`
 - Order detail: `GET http://127.0.0.1:8000/api/v1/orders/{order_id}`
-- Classifier capabilities: `GET http://127.0.0.1:8000/api/v1/image-search/classifiers`
-- Image classification: `POST http://127.0.0.1:8000/api/v1/image-search/classify`
+- Transitional classifier capabilities: `GET http://127.0.0.1:8000/api/v1/image-search/classifiers`
+- Transitional image classification: `POST http://127.0.0.1:8000/api/v1/image-search/classify`
 - Visual product search: `POST http://127.0.0.1:8000/api/v1/image-search/search`
 - OpenAPI documentation: `http://127.0.0.1:8000/docs`
 
@@ -221,13 +221,21 @@ Registration and login accept JSON:
 }
 ```
 
-Both return a 30-minute access token and a public user object. Call protected endpoints with:
+Both return a 30-minute access token and a public user object containing the
+authoritative `customer | admin` role. Public registration rejects a client-supplied
+role and always uses the database default `customer`. Call protected endpoints with:
 
 ```http
 Authorization: Bearer <access_token>
 ```
 
-Passwords are stored only as Argon2 hashes. JWTs are signed with HS256 and include issuer, audience, issued-at, expiration, subject, type, and token ID claims. This initial auth phase does not yet provide refresh tokens, password reset, email verification, or server-side token revocation.
+Passwords are stored only as Argon2 hashes. JWTs are signed with HS256 and include
+issuer, audience, issued-at, expiration, subject, type, and token ID claims. Role
+is deliberately not trusted from a JWT claim: protected requests load the active
+user and current role from PostgreSQL, so promote/demote takes effect on the next
+request. `require_admin` returns 403 for an authenticated customer. This auth phase
+does not yet provide refresh tokens, password reset, email verification, or
+server-side token revocation.
 
 Cart and order endpoints require the same Bearer token. Add a product variant
 with `{"variant_id": "<uuid>", "quantity": 1}`. Checkout accepts
@@ -246,19 +254,43 @@ index cleanup is documented in `scripts/README.md`.
 
 Catalog supports repeated `category_ids`, `size`, `color`, `brand`, minimum and
 maximum price, stock state, sorting (`newest`, `price_asc`, `price_desc`), page,
-and limit. Image search accepts multipart fields `image`, repeated
-`category_ids`, and `limit`. It retrieves the top 50 Pinecone candidates,
+and limit. Customer image search accepts only multipart fields `image` and optional
+`limit`; it does not apply a classifier/category metadata filter. It retrieves the
+top 50 Pinecone candidates,
 validates encoded content before CLIP inference, deduplicates matches by
 `product_id`, hydrates authoritative catalog data from PostgreSQL, and preserves
 similarity ranking. The response includes `retrieval_time_ms`, measured on the
 server across CLIP embedding, Pinecone retrieval, and product hydration.
 
-Classifier capabilities report AlexNet as available when its versioned manifest
-and checkpoint pass validation. ResNet50 and ViT remain visible as unavailable
-until their own verified artifacts are supplied. Classification accepts multipart
-fields `image`, `model_id`, and optional `top_k` (default 5, maximum 10). It
+Admin-only classifier capabilities report AlexNet as available when its versioned
+manifest and checkpoint pass validation. ResNet50 and ViT remain visible as
+unavailable until their own verified artifacts are supplied. `GET
+/api/v1/admin/classifiers` and `POST /api/v1/admin/classification/predict` both
+require an active admin Bearer token. Prediction accepts multipart fields `image`,
+`model_id`, and optional `top_k` (default 5, maximum 10). It
 returns logits for diagnostics, Softmax probabilities for the UI, the suggested
 top-1 category, and preprocessing/inference/postprocessing/total timing.
+
+The old public `/api/v1/image-search/classifiers` and
+`/api/v1/image-search/classify` routes are no longer registered. Customer
+retrieval never loads the classifier. Inference runs off the async event loop and
+uses `CLASSIFIER_MAX_CONCURRENCY` process-local slots; exhausted capacity returns
+`429 CLASSIFIER_BUSY` so the admin UI can retry without overloading the model.
+
+Admin catalog endpoints live under `/api/v1/admin/products` and require the same
+admin permission. They support paginated list/detail, draft creation and versioned
+metadata updates, variant and image management, publish, archive, and restore.
+The paginated admin list returns its primary image URL and indexes only the
+selected page before aggregating variants. `POST /api/v1/admin/products/{id}/index`
+indexes the primary image without changing draft/published status, allowing an
+admin to repair missing vector state independently from publishing.
+Publishing requires an active variant and exactly one primary image, embeds that
+primary image with CLIP, and upserts its Pinecone document before changing the
+PostgreSQL product to `published`. Index failures leave the product in `draft`,
+mark the image `failed`, and record a recoverable sync job; calling publish again
+is the synchronous MVP retry operation. Archive removes indexed vectors and keeps
+the relational record and Storage object for restoration. Every successful admin
+mutation records an actor/request audit event.
 
 The AlexNet artifact is stored at
 `artifacts/classifiers/alexnet/1.0.0/`. Its manifest records the exact custom
@@ -290,6 +322,8 @@ Pytest discovery is limited to `tests/`, and its cache provider is disabled so t
 - Golden preprocessing fixtures exported from each training pipeline
 - Comparative top-5 accuracy, macro-F1, calibration, and retrieval-recall benchmark
 - Deployment-level rate limiting for inference requests
+- Background processing/backoff for failed catalog sync jobs (publish is the MVP retry)
+- Admin catalog frontend (Phase 4)
 - Refresh tokens, password reset, and email verification
 
 These components require verified artifacts, schemas, and external configuration and will be implemented only when their contracts are defined.

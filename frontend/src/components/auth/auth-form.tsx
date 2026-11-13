@@ -16,9 +16,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
   const isRegister = mode === "register";
 
-  function fillDemoAccount() {
-    setEmail("user0@gmaill.com");
-    setPassword("123456789");
+  function fillDemoAccount(nextEmail: string, nextPassword: string) {
+    setEmail(nextEmail);
+    setPassword(nextPassword);
     setError(null);
   }
 
@@ -27,9 +27,10 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     setError(null);
     setSubmitting(true);
     try {
-      if (isRegister) await signUp({ email, password });
-      else await signIn({ email, password });
-      router.push("/");
+      const user = isRegister
+        ? await signUp({ email, password })
+        : await signIn({ email, password });
+      router.push(user.role === "admin" ? "/admin" : "/");
     } catch (caught) {
       setError(asApiError(caught));
     } finally {
@@ -55,9 +56,17 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           <label htmlFor="auth-password">Mật khẩu</label>
           <input id="auth-password" type="password" autoComplete={isRegister ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={isRegister ? 8 : 1} maxLength={128} aria-describedby={isRegister ? "password-help" : undefined} />
           {!isRegister ? (
-            <button className="button button-secondary button-small demo-account" type="button" onClick={fillDemoAccount} aria-label="Điền tài khoản demo user0@gmaill.com">
-              user0@gmaill.com
-            </button>
+            <div className="demo-accounts" aria-label="Tài khoản đăng nhập nhanh">
+              <span>Tài khoản dành cho phát triển</span>
+              <div>
+                <button className="button button-secondary button-small demo-account" type="button" onClick={() => fillDemoAccount("user0@gmaill.com", "123456789")} aria-label="Điền tài khoản customer user0@gmaill.com">
+                  <small>Customer</small> user0@gmaill.com
+                </button>
+                <button className="button button-secondary button-small demo-account admin" type="button" onClick={() => fillDemoAccount("admin@example.com", "admin123")} aria-label="Điền tài khoản admin admin@example.com">
+                  <small>Admin</small> admin@example.com
+                </button>
+              </div>
+            </div>
           ) : null}
           {isRegister ? <small id="password-help" className="field-help">Mật khẩu cần có tối thiểu 8 ký tự.</small> : null}
           {error ? (

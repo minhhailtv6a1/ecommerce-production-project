@@ -1,7 +1,10 @@
+export type UserRole = "customer" | "admin";
+
 export interface AuthUser {
   id: string;
   email: string;
   is_active: boolean;
+  role: UserRole;
   created_at: string;
 }
 

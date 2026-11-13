@@ -44,14 +44,16 @@ const { buildVisualSearchFormData, parseVisualSearchResponse } = require("../src
 const { buildClassificationFormData, parseImageClassificationResponse } = require("../src/lib/api/classification.api.ts");
 const { validateImageFile, IMAGE_MAX_BYTES } = require("../src/features/visual-search/image-validation.ts");
 const { paginateVisualSearchItems, VISUAL_SEARCH_PAGE_SIZE } = require("../src/features/visual-search/visual-search-pagination.ts");
-const { orderCategoriesByPredictions, CLASSIFICATION_TOAST_DURATION_MS } = require("../src/features/visual-search/classification-utils.ts");
+const { orderCategoriesByPredictions, CLASSIFICATION_TOAST_DURATION_MS } = require("../src/features/admin/classification/classification-utils.ts");
 const { ProductCard } = require("../src/components/products/product-card.tsx");
 const { ProductGrid } = require("../src/components/products/product-grid.tsx");
 const { ApiErrorPanel } = require("../src/components/ui/api-error-panel.tsx");
 const { VisualSearchView } = require("../src/features/visual-search/visual-search-view.tsx");
-const { ClassificationResults } = require("../src/features/visual-search/classification-results.tsx");
-const { getNextEnabledIndex } = require("../src/features/visual-search/classifier-model-select.tsx");
+const { ClassificationResults } = require("../src/features/admin/classification/classification-results.tsx");
+const { ClassifierModelSelect, getNextEnabledIndex } = require("../src/features/admin/classification/classifier-model-select.tsx");
 const { parseCart, parseOrder } = require("../src/lib/api/commerce-parser.ts");
+const { parseAuthUser } = require("../src/lib/api/auth.api.ts");
+const { parseAdminProduct } = require("../src/lib/api/admin-catalog.api.ts");
 const { canCheckout, orderStatusLabel } = require("../src/features/commerce/commerce-utils.ts");
 const { OrderStatusBadge } = require("../src/features/commerce/order-status-badge.tsx");
 const { ProductThumbnail } = require("../src/features/commerce/product-thumbnail.tsx");
@@ -95,10 +97,39 @@ test("parses the stable backend error contract", () => {
   assert.equal(error.requestId, "request-123");
 });
 
+test("parses the authoritative admin product lifecycle contract", () => {
+  const parsed = parseAdminProduct({
+    id: "product-1", slug: "ao-thun", name: "Áo thun", description: null,
+    category_id: "02", brand: null, status: "draft", currency: "VND",
+    version: 1, created_by: null, updated_by: null,
+    created_at: "2026-11-13T00:00:00Z", updated_at: "2026-11-13T00:00:00Z",
+    variants: [], images: [],
+  });
+  assert.equal(parsed.status, "draft");
+  assert.equal(parsed.category_id, "02");
+  assert.throws(() => parseAdminProduct({ ...parsed, status: "deleted" }), /không hợp lệ/);
+});
+
 test("distinguishes a network failure", () => {
   const error = parseApiError(new TypeError("Failed to fetch"), null);
   assert.equal(error.code, "NETWORK_ERROR");
   assert.match(error.message, /tạm thời gián đoạn/);
+});
+
+test("parses customer and admin roles but rejects unknown authorization state", () => {
+  const baseUser = {
+    id: "user-1",
+    email: "user@example.com",
+    is_active: true,
+    created_at: "2026-11-12T00:00:00Z",
+  };
+
+  assert.equal(parseAuthUser({ ...baseUser, role: "customer" }).role, "customer");
+  assert.equal(parseAuthUser({ ...baseUser, role: "admin" }).role, "admin");
+  assert.throws(
+    () => parseAuthUser({ ...baseUser, role: "super_admin" }),
+    /role người dùng không được hỗ trợ/,
+  );
 });
 
 test("formats VND prices and preserves other currency labels", () => {
@@ -124,11 +155,11 @@ test("builds visual-search multipart fields", () => {
   const file = new File(["image-data"], "query.png", { type: "image/png" });
   const form = buildVisualSearchFormData({
     image: file,
-    categoryIds: ["00", "41"],
     limit: 50,
   });
   assert.equal(form.get("image"), file);
-  assert.deepEqual(form.getAll("category_ids"), ["00", "41"]);
+  assert.deepEqual(form.getAll("category_ids"), []);
+  assert.equal(form.get("model_id"), null);
   assert.equal(form.get("limit"), "50");
 });
 
@@ -141,7 +172,7 @@ test("parses and formats server-side RAG retrieval time", () => {
   assert.match(formatRetrievalTime(response.retrieval_time_ms), /364,01 ms/);
 });
 
-test("builds and parses the top-five classification contract", () => {
+test("builds and parses the transitional admin classification contract", () => {
   const file = new File(["image-data"], "query.png", { type: "image/png" });
   const form = buildClassificationFormData({
     image: file,
@@ -165,7 +196,7 @@ test("builds and parses the top-five classification contract", () => {
   assert.equal(response.suggested_category_id, "02");
 });
 
-test("orders predicted categories first and keeps the toast for three seconds", () => {
+test("orders admin category suggestions and retains the reusable toast duration", () => {
   const categories = [
     { id: "00", slug: "zero", name: "Zero", description: null, product_count: 1 },
     { id: "02", slug: "two", name: "Two", description: null, product_count: 1 },
@@ -182,8 +213,22 @@ test("orders predicted categories first and keeps the toast for three seconds", 
   assert.equal(CLASSIFICATION_TOAST_DURATION_MS, 3000);
 });
 
-test("renders the classifier model picker as an accessible custom dropdown", () => {
+test("keeps the customer visual-search page free of classifier and category controls", () => {
   const html = renderToStaticMarkup(React.createElement(VisualSearchView));
+  assert.match(html, /2 · Tìm kiếm/);
+  assert.match(html, /Chọn một ảnh rồi bắt đầu tìm kiếm/);
+  assert.doesNotMatch(html, /classifier-model/);
+  assert.doesNotMatch(html, /Mô hình phân loại/);
+  assert.doesNotMatch(html, /Danh mục tìm kiếm/);
+});
+
+test("renders the admin classifier model picker as an accessible custom dropdown", () => {
+  const html = renderToStaticMarkup(React.createElement(ClassifierModelSelect, {
+    classifiers: [],
+    value: "none",
+    loading: false,
+    onChange: () => {},
+  }));
   assert.match(html, /id="classifier-model"/);
   assert.match(html, /aria-haspopup="listbox"/);
   assert.match(html, /Không dùng model/);
@@ -198,7 +243,7 @@ test("skips unavailable models during dropdown keyboard navigation", () => {
   assert.equal(getNextEnabledIndex(availability, 0, -1), 1);
 });
 
-test("renders classification confidence as a selectable ranked result", () => {
+test("renders admin classification confidence as a single category choice", () => {
   const data = {
     model: { id: "alexnet", display_name: "AlexNet", version: "1.0.0" },
     predictions: [
@@ -211,14 +256,15 @@ test("renders classification confidence as a selectable ranked result", () => {
   const html = renderToStaticMarkup(
     React.createElement(ClassificationResults, {
       data,
-      selectedCategories: ["02"],
-      onToggleCategory: () => {},
+      selectedCategory: "02",
+      onSelectCategory: () => {},
     }),
   );
   assert.match(html, /Phân loại hoàn tất/);
   assert.match(html, /87%/);
   assert.match(html, /Gợi ý phù hợp nhất/);
-  assert.match(html, /type="checkbox" checked=""/);
+  assert.match(html, /type="radio"/);
+  assert.match(html, /checked=""/);
 });
 
 test("paginates 50 visual-search results without running retrieval again", () => {

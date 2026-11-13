@@ -37,10 +37,6 @@ router = APIRouter(prefix="/image-search", tags=["image-search"])
                         "required": ["image"],
                         "properties": {
                             "image": {"type": "string", "format": "binary"},
-                            "category_ids": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                            },
                             "limit": {"type": "integer", "minimum": 1},
                         },
                     }
@@ -57,7 +53,7 @@ async def search_products_by_image(
     try:
         form = await request.form(
             max_files=1,
-            max_fields=60,
+            max_fields=5,
             max_part_size=settings.image_upload_max_bytes + 1,
         )
     except (AssertionError, RuntimeError) as exc:
@@ -71,7 +67,6 @@ async def search_products_by_image(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="image is required",
         )
-    category_ids = [str(value) for value in form.getlist("category_ids")]
     raw_limit = form.get("limit")
     try:
         requested_limit = (
@@ -118,7 +113,7 @@ async def search_products_by_image(
             searcher=searcher,
             vector_field=vector_field,
             top_k=settings.image_search_top_k,
-            category_ids=category_ids or (),
+            category_ids=(),
         )
         search_response = hydrate_visual_search_matches(
             matches,

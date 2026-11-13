@@ -2,6 +2,8 @@
 
 from collections.abc import Iterator
 from functools import lru_cache
+import logging
+from time import perf_counter
 
 import httpx
 from fastapi import HTTPException, status
@@ -13,6 +15,7 @@ from app.repositories.database import (
     open_database_connection,
 )
 from app.repositories.products import ProductRepository
+from app.repositories.admin_products import AdminProductRepository
 from app.repositories.commerce import CommerceRepository
 from app.repositories.pinecone import (
     PineconeDocumentRepository,
@@ -35,6 +38,12 @@ from app.services.pinecone_index import (
 from app.services.product_service import ProductService
 from app.services.commerce import CommerceService
 from app.services.storage_upload import SupabaseStorageUrlResolver
+from app.services.storage_upload import SupabaseStorageUploader
+from app.services.admin_catalog import AdminCatalogService
+from app.services.catalog_indexing import CatalogIndexer, DeferredCatalogIndexer
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_product_service() -> Iterator[ProductService]:
@@ -106,6 +115,57 @@ def get_commerce_service() -> Iterator[CommerceService]:
         connection.close()
 
 
+def get_admin_catalog_service() -> Iterator[AdminCatalogService]:
+    """Provide transactional DB, Storage, CLIP, and Pinecone admin resources."""
+    required = {
+        "SUPABASE_URL": settings.supabase_url,
+        "SUPABASE_SECRET_KEY": settings.supabase_secret_key,
+        "SUPABASE_STORAGE_BUCKET": settings.supabase_storage_bucket,
+    }
+    missing = [name for name, value in required.items() if value is None]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin catalog storage is not configured",
+        )
+    try:
+        connection = open_database_connection()
+    except (DatabaseConfigurationError, DatabaseConnectionError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin catalog database is unavailable",
+        ) from exc
+
+    client = httpx.Client(timeout=settings.supabase_storage_timeout_seconds)
+    try:
+        secret_key = settings.supabase_secret_key.get_secret_value()
+        storage = SupabaseStorageUploader(
+            supabase_url=settings.supabase_url or "",
+            secret_key=secret_key,
+            bucket=settings.supabase_storage_bucket or "",
+            bucket_public=settings.supabase_storage_bucket_public,
+            max_file_bytes=settings.supabase_storage_max_standard_upload_bytes,
+            client=client,
+        )
+        resolver = SupabaseStorageUrlResolver(
+            supabase_url=settings.supabase_url or "",
+            secret_key=secret_key,
+            bucket=settings.supabase_storage_bucket or "",
+            bucket_public=settings.supabase_storage_bucket_public,
+            signed_url_ttl_seconds=settings.supabase_storage_signed_url_ttl_seconds,
+            client=client,
+        )
+        yield AdminCatalogService(
+            products=AdminProductRepository(connection),
+            storage=storage,
+            image_urls=resolver,
+            indexer=DeferredCatalogIndexer(get_catalog_indexer),
+        )
+    finally:
+        client.close()
+        connection.close()
+
+
 @lru_cache
 def get_image_search_resources() -> tuple[
     OpenClipImageEmbedder,
@@ -153,6 +213,23 @@ def get_image_search_resources() -> tuple[
 
 
 @lru_cache
+def get_catalog_indexer() -> CatalogIndexer:
+    """Initialize shared CLIP/Pinecone resources only for index lifecycle work."""
+    started = perf_counter()
+    logger.info("Initializing shared CLIP/Pinecone catalog indexer")
+    embedder, documents, vector_field = get_image_search_resources()
+    logger.info(
+        "Shared catalog indexer ready in %.2f seconds",
+        perf_counter() - started,
+    )
+    return CatalogIndexer(
+        embedder=embedder,
+        documents=documents,
+        vector_field=vector_field,
+    )
+
+
+@lru_cache
 def get_classifier_registry() -> ClassifierRegistry:
     """Discover classifier artifacts once and lazily load their models."""
     return ClassifierRegistry(
@@ -164,4 +241,7 @@ def get_classifier_registry() -> ClassifierRegistry:
 @lru_cache
 def get_classification_service() -> ImageClassificationService:
     """Reuse the classifier registry across classification requests."""
-    return ImageClassificationService(get_classifier_registry())
+    return ImageClassificationService(
+        get_classifier_registry(),
+        max_concurrency=settings.classifier_max_concurrency,
+    )

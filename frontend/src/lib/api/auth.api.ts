@@ -1,4 +1,4 @@
-import type { AuthCredentials, AuthUser, TokenResponse } from "@/types/auth";
+import type { AuthCredentials, AuthUser, TokenResponse, UserRole } from "@/types/auth";
 import { requestJson } from "./http-client";
 import {
   booleanValue,
@@ -8,12 +8,21 @@ import {
   stringValue,
 } from "./parse";
 
-function parseUser(value: unknown): AuthUser {
+function parseUserRole(value: unknown): UserRole {
+  const role = stringValue(value, "user.role");
+  if (role !== "customer" && role !== "admin") {
+    return invalidResponse("Backend trả về role người dùng không được hỗ trợ.");
+  }
+  return role;
+}
+
+export function parseAuthUser(value: unknown): AuthUser {
   const data = record(value, "người dùng");
   return {
     id: stringValue(data.id, "user.id"),
     email: stringValue(data.email, "user.email"),
     is_active: booleanValue(data.is_active, "user.is_active"),
+    role: parseUserRole(data.role),
     created_at: stringValue(data.created_at, "user.created_at"),
   };
 }
@@ -28,7 +37,7 @@ function parseToken(value: unknown): TokenResponse {
     access_token: stringValue(data.access_token, "auth.access_token"),
     token_type: tokenType,
     expires_in: numberValue(data.expires_in, "auth.expires_in"),
-    user: parseUser(data.user),
+    user: parseAuthUser(data.user),
   };
 }
 
@@ -55,5 +64,5 @@ export function register(credentials: AuthCredentials, signal?: AbortSignal) {
 }
 
 export async function getMe(token: string, signal?: AbortSignal): Promise<AuthUser> {
-  return parseUser(await requestJson("/auth/me", { token, signal }));
+  return parseAuthUser(await requestJson("/auth/me", { token, signal }));
 }

@@ -32,6 +32,9 @@ connection:
 python -m scripts.insert_data --apply
 ```
 
+Run `python -m scripts.create_auth_schema --apply` first. The catalog schema uses
+`public.users` foreign keys for admin ownership metadata.
+
 The importer creates `public.categories`, `public.products`,
 `public.product_variants`, and `public.product_images` plus relevant indexes.
 All writes run in one transaction and use `ON CONFLICT ... DO UPDATE`; the
@@ -87,9 +90,54 @@ python -m scripts.create_auth_schema --apply
 ```
 
 The operation is idempotent and never deletes users. It creates a UUID primary
-key, normalized unique email, Argon2 password-hash field, active flag, and
-creation timestamp. It rejects an existing table that is missing required
-columns.
+key, normalized unique email, Argon2 password-hash field, active flag, creation
+timestamp, and a `customer | admin` role. Existing users are backfilled to
+`customer`; the role is NOT NULL, defaults to `customer`, and is protected by a
+check constraint plus `(role, is_active)` index.
+
+Preview an explicit role change for an existing application user:
+
+```bash
+python -m scripts.manage_user_role --email admin@example.com --role admin
+```
+
+After reviewing the normalized email and requested role, apply it:
+
+```bash
+python -m scripts.manage_user_role --email admin@example.com --role admin --apply
+```
+
+With the Docker backend running, the same preview/apply workflow is available
+inside the container:
+
+```bash
+docker compose exec backend python -m scripts.manage_user_role --email admin@example.com --role admin
+docker compose exec backend python -m scripts.manage_user_role --email admin@example.com --role admin --apply
+```
+
+The command only updates the selected existing user, never accepts passwords,
+and does not create users. Public registration always creates a customer and
+cannot be used to grant admin access.
+
+## Admin catalog lifecycle schema
+
+After the authentication and base catalog schemas exist, preview the additive
+admin migration:
+
+```bash
+python -m scripts.migrate_admin_catalog_schema
+```
+
+Apply and validate ownership/version columns, image index state, audit events,
+sync jobs, and supporting indexes:
+
+```bash
+python -m scripts.migrate_admin_catalog_schema --apply
+```
+
+The migration is idempotent and does not drop or truncate catalog data. Failed
+synchronous Pinecone indexing remains visible through `product_images.index_status`
+and `catalog_sync_jobs`; retry the protected publish operation for the product.
 
 ## Cart and order schema
 
@@ -212,6 +260,20 @@ python -m scripts.backfill_pinecone_catalog_metadata --verify-only
 
 The apply command verifies all manifest links by reading them back from
 Pinecone. It updates only `product_id` and `image_id`.
+
+If vectors were ingested before the admin `index_status` column existed, first
+preview and then reconcile PostgreSQL only after every manifest document is
+verified in Pinecone:
+
+```bash
+python -m scripts.reconcile_catalog_index_status
+python -m scripts.reconcile_catalog_index_status --apply
+```
+
+The apply operation checks the exact `pinecone_vector_id`, `product_id`, and
+`image_id` mapping before marking matching rows `indexed`. It never recomputes or
+rewrites vectors. Images uploaded later through the admin UI remain `pending`
+until the admin indexes or publishes them.
 
 Documents ingested before `image_path` was introduced must be upserted again.
 For example, repeat the original limited batch with `--no-resume`:

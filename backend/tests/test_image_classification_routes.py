@@ -1,15 +1,20 @@
 """HTTP contract tests for classifier capabilities and top-k predictions."""
 
 from io import BytesIO
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.api.dependencies import get_classification_service, get_classifier_registry
+from app.api.routes.auth import require_admin
 from app.classifiers.registry import ClassifierCapability
 from app.main import app
+from app.repositories.users import UserRecord
 from app.services.image_classification import (
+    ClassificationBusyError,
     ClassificationPrediction,
     ClassificationResult,
     ClassificationTiming,
@@ -53,6 +58,14 @@ class FakeService:
 def client() -> TestClient:
     app.dependency_overrides[get_classifier_registry] = lambda: FakeRegistry()
     app.dependency_overrides[get_classification_service] = lambda: FakeService()
+    app.dependency_overrides[require_admin] = lambda: UserRecord(
+        id=uuid4(),
+        email="admin@example.com",
+        password_hash="unused",
+        is_active=True,
+        role="admin",
+        created_at=datetime.now(UTC),
+    )
     try:
         yield TestClient(app)
     finally:
@@ -62,7 +75,7 @@ def client() -> TestClient:
 def test_classifier_capabilities_expose_available_and_planned_models(
     client: TestClient,
 ) -> None:
-    response = client.get("/api/v1/image-search/classifiers")
+    response = client.get("/api/v1/admin/classifiers")
 
     assert response.status_code == 200
     items = response.json()["items"]
@@ -73,7 +86,7 @@ def test_classifier_capabilities_expose_available_and_planned_models(
 
 def test_classify_returns_ranked_predictions_and_timing(client: TestClient) -> None:
     response = client.post(
-        "/api/v1/image-search/classify",
+        "/api/v1/admin/classification/predict",
         files={"image": ("query.png", _png_bytes(), "image/png")},
         data={"model_id": "alexnet", "top_k": "5"},
     )
@@ -83,4 +96,26 @@ def test_classify_returns_ranked_predictions_and_timing(client: TestClient) -> N
     assert body["suggested_category_id"] == "02"
     assert body["predictions"][0]["probability"] == 0.87
     assert body["timing"]["total_ms"] == 3.5
+
+
+def test_legacy_public_classifier_routes_are_not_exposed(client: TestClient) -> None:
+    assert client.get("/api/v1/image-search/classifiers").status_code == 404
+    assert client.post("/api/v1/image-search/classify").status_code == 404
+
+
+def test_classifier_capacity_returns_retryable_429(client: TestClient) -> None:
+    class BusyService:
+        def classify(self, **_: object) -> None:
+            raise ClassificationBusyError
+
+    app.dependency_overrides[get_classification_service] = lambda: BusyService()
+
+    response = client.post(
+        "/api/v1/admin/classification/predict",
+        files={"image": ("query.png", _png_bytes(), "image/png")},
+        data={"model_id": "alexnet", "top_k": "5"},
+    )
+
+    assert response.status_code == 429
+    assert response.json()["code"] == "CLASSIFIER_BUSY"
 

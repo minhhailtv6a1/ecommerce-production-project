@@ -22,6 +22,7 @@ def commerce_client() -> tuple[TestClient, FakeCommerceStore]:
         email="user@example.com",
         password_hash="hidden",
         is_active=True,
+        role="customer",
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
     app.dependency_overrides[require_current_user] = lambda: user

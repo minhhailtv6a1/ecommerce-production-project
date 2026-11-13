@@ -45,6 +45,7 @@ class StorageUploadError(RuntimeError):
 class HttpResponse(Protocol):
     status_code: int
     text: str
+    content: bytes
 
     def json(self) -> Any: ...
 
@@ -56,6 +57,13 @@ class HttpClient(Protocol):
         *,
         headers: dict[str, str],
         content: bytes,
+    ) -> HttpResponse: ...
+
+    def get(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
     ) -> HttpResponse: ...
 
 
@@ -172,10 +180,31 @@ class SupabaseStorageUploader:
                 f"Cannot determine an image MIME type: {image.source_path}"
             )
 
+        return self.upload_bytes(
+            storage_path=image.storage_path,
+            content=image.source_file.read_bytes(),
+            content_type=mime_type,
+            overwrite=overwrite,
+        )
+
+    def upload_bytes(
+        self,
+        *,
+        storage_path: str,
+        content: bytes,
+        content_type: str,
+        overwrite: bool = False,
+    ) -> StorageUploadResult:
+        """Upload validated in-memory image bytes to a provider-neutral path."""
+        _validate_relative_path(storage_path, field="storage_path", row_number=1)
+        if not content or len(content) > self.max_file_bytes:
+            raise StorageManifestError("Uploaded image size is invalid")
+        if not content_type.startswith("image/"):
+            raise StorageManifestError("Uploaded object must use an image MIME type")
         headers = {
             "apikey": self.secret_key,
             "cache-control": "max-age=3600",
-            "content-type": mime_type,
+            "content-type": content_type,
             "user-agent": "image-search-backend-storage-ingest/1.0",
             "x-upsert": str(overwrite).lower(),
         }
@@ -183,8 +212,7 @@ class SupabaseStorageUploader:
         if self.secret_key.startswith("eyJ"):
             headers["authorization"] = f"Bearer {self.secret_key}"
 
-        upload_url = self._object_url(image.storage_path)
-        content = image.source_file.read_bytes()
+        upload_url = self._object_url(storage_path)
         last_error: StorageUploadError | None = None
         for attempt in range(1, self.max_attempts + 1):
             try:
@@ -195,7 +223,7 @@ class SupabaseStorageUploader:
                 )
             except httpx.RequestError as exc:
                 last_error = StorageUploadError(
-                    f"Storage request failed for {image.storage_path}: {exc}",
+                    f"Storage request failed for {storage_path}: {exc}",
                 )
                 if attempt < self.max_attempts:
                     time.sleep(2 ** (attempt - 1))
@@ -204,21 +232,21 @@ class SupabaseStorageUploader:
 
             if 200 <= response.status_code < 300:
                 return StorageUploadResult(
-                    storage_path=image.storage_path,
+                    storage_path=storage_path,
                     outcome="uploaded",
-                    public_url=self.public_url(image.storage_path),
+                    public_url=self.public_url(storage_path),
                 )
             if not overwrite and _is_existing_object_response(response):
                 return StorageUploadResult(
-                    storage_path=image.storage_path,
+                    storage_path=storage_path,
                     outcome="already_exists",
-                    public_url=self.public_url(image.storage_path),
+                    public_url=self.public_url(storage_path),
                 )
 
             detail = _safe_response_detail(response)
             fatal = response.status_code in {401, 403, 404}
             last_error = StorageUploadError(
-                f"Storage upload rejected for {image.storage_path} "
+                f"Storage upload rejected for {storage_path} "
                 f"(HTTP {response.status_code}): {detail}",
                 status_code=response.status_code,
                 fatal=fatal,
@@ -233,6 +261,33 @@ class SupabaseStorageUploader:
 
         assert last_error is not None
         raise last_error
+
+    def download(self, storage_path: str) -> bytes:
+        """Download an existing catalog object for CLIP indexing."""
+        _validate_relative_path(storage_path, field="storage_path", row_number=1)
+        headers = {
+            "apikey": self.secret_key,
+            "user-agent": "image-search-backend-catalog-indexer/1.0",
+        }
+        if self.secret_key.startswith("eyJ"):
+            headers["authorization"] = f"Bearer {self.secret_key}"
+        try:
+            response = self.client.get(
+                self._object_url(storage_path),
+                headers=headers,
+            )
+        except httpx.RequestError as exc:
+            raise StorageUploadError("Unable to download product image") from exc
+        if not 200 <= response.status_code < 300:
+            raise StorageUploadError(
+                "Storage image download failed "
+                f"(HTTP {response.status_code}): {_safe_response_detail(response)}",
+                status_code=response.status_code,
+            )
+        content = getattr(response, "content", None)
+        if not isinstance(content, bytes) or not content:
+            raise StorageUploadError("Storage image download returned no content")
+        return content
 
     def public_url(self, storage_path: str) -> str | None:
         """Return a browser URL only when the configured bucket is public."""

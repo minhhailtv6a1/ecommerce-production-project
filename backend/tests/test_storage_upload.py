@@ -15,10 +15,17 @@ from app.services.storage_upload import (
 
 
 class FakeResponse:
-    def __init__(self, status_code: int, payload: dict[str, str]) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        payload: dict[str, str],
+        *,
+        content: bytes = b"",
+    ) -> None:
         self.status_code = status_code
         self.payload = payload
         self.text = str(payload)
+        self.content = content
 
     def json(self):
         return self.payload
@@ -31,6 +38,10 @@ class FakeClient:
 
     def post(self, url: str, *, headers: dict[str, str], content: bytes):
         self.calls.append({"url": url, "headers": headers, "content": content})
+        return self.responses.pop(0)
+
+    def get(self, url: str, *, headers: dict[str, str]):
+        self.calls.append({"url": url, "headers": headers})
         return self.responses.pop(0)
 
 
@@ -125,6 +136,37 @@ def test_existing_object_is_idempotent_and_legacy_key_uses_bearer() -> None:
         assert client.calls[0]["headers"]["authorization"] == (
             "Bearer eyJlegacy-service-role"
         )
+
+
+def test_upload_bytes_and_download_support_admin_catalog_images() -> None:
+    client = FakeClient(
+        [
+            FakeResponse(200, {"Key": "object-key"}),
+            FakeResponse(200, {}, content=b"stored-image"),
+        ]
+    )
+    uploader = SupabaseStorageUploader(
+        supabase_url="https://project.supabase.co",
+        secret_key="sb_secret_test",
+        bucket="product-images",
+        bucket_public=True,
+        max_file_bytes=1024,
+        client=client,
+    )
+
+    uploaded = uploader.upload_bytes(
+        storage_path="catalog/admin/product-id/image.png",
+        content=b"png-content",
+        content_type="image/png",
+    )
+    downloaded = uploader.download("catalog/admin/product-id/image.png")
+
+    assert uploaded.outcome == "uploaded"
+    assert downloaded == b"stored-image"
+    assert client.calls[0]["headers"]["content-type"] == "image/png"
+    assert client.calls[1]["url"].endswith(
+        "/storage/v1/object/product-images/catalog/admin/product-id/image.png"
+    )
 
 
 def test_manifest_public_url_update_is_atomic() -> None:

@@ -5,7 +5,6 @@ import { parseProductCard } from "./product-parser";
 
 export interface VisualSearchRequest {
   image: File;
-  categoryIds?: string[];
   limit?: number;
 }
 
@@ -14,7 +13,6 @@ export function buildVisualSearchFormData(
 ): FormData {
   const form = new FormData();
   form.append("image", request.image);
-  request.categoryIds?.forEach((id) => form.append("category_ids", id));
   if (request.limit !== undefined) form.append("limit", String(request.limit));
   return form;
 }

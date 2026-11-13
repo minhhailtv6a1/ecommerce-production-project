@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from threading import BoundedSemaphore
 from time import perf_counter
 
 from app.classifiers.registry import ClassifierRegistry
@@ -37,11 +38,32 @@ class ClassificationResult:
     timing: ClassificationTiming
 
 
+class ClassificationBusyError(RuntimeError):
+    """Raised when all configured inference slots are occupied."""
+
+
 class ImageClassificationService:
-    def __init__(self, registry: ClassifierRegistry) -> None:
+    def __init__(self, registry: ClassifierRegistry, *, max_concurrency: int = 1) -> None:
+        if max_concurrency <= 0:
+            raise ValueError("max_concurrency must be positive")
         self._registry = registry
+        self._inference_slots = BoundedSemaphore(max_concurrency)
 
     def classify(
+        self,
+        *,
+        content: bytes,
+        model_id: str,
+        top_k: int,
+    ) -> ClassificationResult:
+        if not self._inference_slots.acquire(blocking=False):
+            raise ClassificationBusyError("Classifier inference capacity is busy")
+        try:
+            return self._classify(content=content, model_id=model_id, top_k=top_k)
+        finally:
+            self._inference_slots.release()
+
+    def _classify(
         self,
         *,
         content: bytes,

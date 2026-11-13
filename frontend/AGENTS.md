@@ -4,7 +4,7 @@
 
 You are the AI coding agent responsible for building and maintaining the customer-facing frontend for this repository.
 
-The product is a Vietnamese e-commerce website centered on image-based product discovery. A customer should be able to upload a product image, review category suggestions from the classifier, adjust the selected categories, search for visually similar products, inspect product information, and continue through familiar shopping flows when the corresponding backend capabilities exist.
+The product is a Vietnamese e-commerce website centered on image-based product discovery. A customer should be able to upload a product image, search the full vector index for visually similar products, inspect product information, and continue through familiar shopping flows when the corresponding backend capabilities exist. Category classification belongs to the planned admin catalog workflow, not customer search.
 
 The frontend lives in `frontend/`. The sibling `backend/` directory is a Python FastAPI application. Read `../backend/README.md`, `../backend/Agents.md`, and the relevant backend routes and schemas before implementing an integration.
 
@@ -26,12 +26,10 @@ The main customer journey is:
 1. Land on the storefront and understand that products can be found from an image.
 2. Select, drag and drop, paste, or capture an image where the browser supports it.
 3. Preview the image and correct common input problems before upload.
-4. Receive ranked category suggestions from the classifier.
-5. Select, deselect, or combine categories. The predicted category is only a suggestion.
-6. Submit the visual search.
-7. Browse ranked product results with clear loading, empty, error, and retry states.
-8. Open a product to review authoritative details such as title, price, images, availability, and description when supplied by the backend.
-9. Use cart, checkout, authentication, favorites, reviews, or order history only after their data contracts are implemented or explicitly requested as UI-only prototypes.
+4. Submit the visual search without selecting a model or category.
+5. Browse ranked product results with clear loading, empty, error, timing, pagination, and retry states.
+6. Open a product to review authoritative details such as title, price, images, availability, and description when supplied by the backend.
+7. Use cart, checkout, authentication, favorites, reviews, or order history only after their data contracts are implemented or explicitly requested as UI-only prototypes.
 
 Do not let conventional storefront features obscure image search. The upload/search action should be easy to find on the home page and remain reachable from result and catalog pages.
 
@@ -39,26 +37,16 @@ Do not let conventional storefront features obscure image search. The upload/sea
 
 Always distinguish implemented backend behavior from planned behavior.
 
-At the time this file was created, the only browser-consumable backend route is:
-
-```http
-GET /api/v1/health
-```
-
-```json
-{ "status": "ok" }
-```
-
 FastAPI documentation is available at `/docs` while the backend is running. The default local backend origin is `http://127.0.0.1:8000`, and the configured API prefix is `/api/v1`.
 
-The backend already contains internal services and command-line scripts for:
+The implemented browser contracts include health, categories, published catalog/detail, customer visual search, custom JWT authentication, server-side cart, and COD orders. Customer `POST /api/v1/image-search/search` accepts multipart `image` plus optional `limit`, creates a 512-dimensional CLIP `ViT-B-32` embedding, searches Pinecone's `image_vector` field without a category filter, hydrates published products, and returns `retrieval_time_ms`.
 
-- CLIP `ViT-B-32` image embeddings with 512 dimensions.
-- Pinecone similarity search using the `image_vector` field and cosine similarity.
-- Optional filtering by one or more canonical category IDs.
-- Ranked matches containing `_id`, `score`, `category_id`, and dataset-relative `image_path`.
+Classifier capability/prediction routes and the AlexNet artifact remain temporarily available during migration, but the customer frontend must not call them. They are reserved for a future admin-only product create/edit flow. ResNet50 and ViT do not yet have verified artifacts.
 
-Those services are not REST endpoints. Product hydration from Supabase, product catalog APIs, classifier upload APIs, authentication, cart, orders, payments, and checkout APIs are not implemented yet.
+The backend implements authoritative `customer | admin` roles, protected admin
+classification, and admin catalog CRUD/lifecycle. Bearer tokens remain in memory.
+The frontend implements `/admin` list/create/edit flows; online payments, refresh
+tokens, and background catalog retries remain out of scope.
 
 Consequences for frontend work:
 
@@ -67,7 +55,7 @@ Consequences for frontend work:
 - Treat CLI output and Pinecone document structure as backend implementation details, not automatically as public API contracts.
 - If a feature is blocked by a missing contract, build the reusable UI state separately only when that is within the task. Keep fixtures clearly labeled and isolated from production API code.
 - Do not make the browser connect directly to Pinecone, Supabase PostgreSQL, model artifacts, or any provider that requires a secret.
-- CORS is not currently configured in `backend/app/main.py`. For cross-origin browser calls, coordinate a backend CORS change or use an intentional same-origin Next.js server/proxy design. Do not work around CORS by disabling browser security.
+- Use the configured exact CORS origins; do not work around CORS by disabling browser security.
 
 ## 4. Frontend Responsibilities
 
@@ -145,7 +133,7 @@ Keep this mapping in one domain module when the source is scaffolded. API payloa
 Implement only the screens required by the current task, but keep navigation and components compatible with this target structure:
 
 - Home: value proposition, prominent visual-search entry point, categories, and real featured content when an API supplies it.
-- Visual search: upload area, preview, validation, category suggestions, category controls, and search submission.
+- Visual search: upload area, preview, validation, direct search submission, timing, and paginated results.
 - Search results: query-image summary, active filters, result count, sorting if supported, product grid, pagination or incremental loading, and recovery states.
 - Catalog/category: category context and product browsing when a catalog endpoint exists.
 - Product detail: gallery and authoritative product information when a product endpoint exists.
@@ -153,6 +141,12 @@ Implement only the screens required by the current task, but keep navigation and
 - Account and orders: only when authentication and order APIs exist.
 
 Use semantic URLs that can be shared and refreshed. Put durable filters, category IDs, sort values, page numbers, and search identifiers in URL state when appropriate. Do not place raw image bytes, object URLs, secrets, or oversized serialized state in a URL.
+
+### Planned Admin Catalog Journey
+
+Admin catalog work belongs under `/admin` and a separate `features/admin` boundary. After backend RBAC exists, an authenticated admin should be able to list draft/published/archived products, create or edit a draft, upload product images, request top category suggestions from AlexNet/ResNet50/ViT, explicitly confirm one canonical category, manage variants, and publish or archive the product.
+
+Frontend route guards and hidden navigation are UX only; backend authorization is authoritative. A customer must receive a forbidden state for admin routes, while an unauthenticated user is directed to authenticate. Do not connect admin pages to the transitional public classifier endpoints once protected admin routes are available.
 
 ## 7. Visual and Interaction Direction
 
@@ -175,7 +169,7 @@ Product cards should show only fields actually available. They should have stabl
 
 Image search is a stateful workflow. Model it explicitly rather than using unrelated booleans.
 
-Recommended states include `idle`, `validating`, `ready`, `classifying`, `choosing-categories`, `searching`, `success`, and `error`. Names may differ, but impossible combinations such as loading and success at the same time should be difficult to represent.
+Recommended customer states include `idle`, `validating`, `ready` or `image-selected`, `searching`, `success`, `empty`, and `error`. Names may differ, but impossible combinations such as loading and success at the same time should be difficult to represent.
 
 For uploads:
 
@@ -189,13 +183,9 @@ For uploads:
 - Do not persist user-uploaded images to analytics, logs, local storage, or third parties without an explicit requirement and disclosure.
 - Prevent stale requests from overwriting newer search state. Abort obsolete requests when practical.
 
-For category suggestions:
+Customer visual search must not load classifier capabilities, run classification, or request categories solely for retrieval. Admin classification UI belongs under an admin feature boundary and must explain that Softmax confidence is a suggestion, not product similarity or an authoritative category decision.
 
-- Display classifier confidence only if the API returns it and define whether it is a `0–1` value or percentage.
-- Preserve backend ranking when showing suggestions.
-- Preselecting the top suggestion may be acceptable, but the customer must be able to remove it and choose one or more other categories.
-- Do not describe classifier confidence as product similarity.
-- Do not describe Pinecone similarity score as probability or model confidence.
+Do not describe Pinecone similarity score as probability or model confidence.
 
 For results:
 
@@ -289,8 +279,7 @@ When a public image-search contract is added, confirm at minimum:
 
 - Endpoint path and HTTP method.
 - Multipart field name and accepted MIME types/size.
-- Whether classification and retrieval are one request or separate requests.
-- Category request shape and whether category selection is optional.
+- Confirm that the customer contract accepts only the image and optional result limit, without classifier or category fields.
 - Response schemas for category suggestions, product IDs, images, scores, pagination, and errors.
 - How dataset-relative `image_path` values become browser-accessible image URLs.
 - Cancellation, timeout, and maximum result behavior.
@@ -357,7 +346,8 @@ At minimum, cover high-risk behavior such as:
 
 - Canonical category IDs remain strings and preserve leading zeros.
 - Upload validation and image replacement/removal.
-- Category suggestion selection, including multiple categories and removing the top prediction.
+- Customer visual search does not render or send classifier/category controls.
+- Admin category suggestions remain separately testable when the admin feature is implemented.
 - Loading, empty, validation-error, server-error, and retry states.
 - Stale/aborted searches do not overwrite the latest result.
 - Product/result rendering tolerates optional fields defined by the schema.

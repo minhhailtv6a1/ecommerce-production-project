@@ -62,7 +62,7 @@ def test_image_search_returns_rag_time_and_uses_top_k_50(
         response = TestClient(app).post(
             "/api/v1/image-search/search",
             files={"image": ("query.png", _png_bytes(), "image/png")},
-            data={"limit": "50"},
+            data={"limit": "50", "category_ids": "00"},
         )
     finally:
         app.dependency_overrides.clear()
@@ -72,4 +72,13 @@ def test_image_search_returns_rag_time_and_uses_top_k_50(
     assert body["retrieval_time_ms"] == 123.45
     assert len(body["items"]) == 1
     assert captured["top_k"] == settings.image_search_top_k == 50
+    assert captured["category_ids"] == ()
+
+
+def test_image_search_openapi_only_documents_image_and_limit() -> None:
+    schema = app.openapi()["paths"]["/api/v1/image-search/search"]["post"]
+    multipart = schema["requestBody"]["content"]["multipart/form-data"]["schema"]
+
+    assert multipart["required"] == ["image"]
+    assert set(multipart["properties"]) == {"image", "limit"}
 

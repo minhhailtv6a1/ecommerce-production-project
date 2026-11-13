@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
 from app.api.dependencies import (
@@ -27,7 +28,7 @@ from app.schemas.image_classification import (
     ClassifierListResponse,
     ImageClassificationResponse,
 )
-from app.services.image_classification import ImageClassificationService
+from app.services.image_classification import ClassificationBusyError, ImageClassificationService
 from app.services.image_upload import InvalidUploadedImageError, validate_uploaded_image
 
 
@@ -94,7 +95,8 @@ async def classify_image(
             max_bytes=settings.image_upload_max_bytes,
             max_pixels=settings.image_upload_max_pixels,
         )
-        result = service.classify(
+        result = await run_in_threadpool(
+            service.classify,
             content=content,
             model_id=model_id,
             top_k=top_k,
@@ -109,6 +111,12 @@ async def classify_image(
         raise _api_error(503, "MODEL_LOAD_FAILED", "The selected classifier could not be loaded") from exc
     except ClassificationInferenceError as exc:
         raise _api_error(500, "CLASSIFICATION_FAILED", "Image classification failed") from exc
+    except ClassificationBusyError as exc:
+        raise _api_error(
+            429,
+            "CLASSIFIER_BUSY",
+            "Classifier capacity is busy; retry shortly",
+        ) from exc
 
     return ImageClassificationResponse(
         model=ClassificationModelResponse(

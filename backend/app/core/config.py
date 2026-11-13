@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     classifier_default_model: Literal["none", "alexnet", "resnet50", "vit"] = "none"
     classifier_top_k: int = Field(default=5, gt=0, le=42)
     classifier_max_top_k: int = Field(default=10, gt=0, le=42)
+    classifier_max_concurrency: int = Field(default=1, gt=0, le=8)
 
     pinecone_api_key: SecretStr | None = None
     pinecone_index_name: str | None = None

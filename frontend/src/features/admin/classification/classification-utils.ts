@@ -1,3 +1,4 @@
+/** Reusable classification helpers reserved for the admin catalog workflow. */
 import type { ClassificationPrediction } from "@/types/classification";
 import type { Category } from "@/types/category";
 

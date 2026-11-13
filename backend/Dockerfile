@@ -28,8 +28,9 @@ RUN useradd -m -u 1001 appuser && \
     mkdir -p /app/artifacts /app/data && \
     chown -R appuser:appuser /app
 
-# Copy application source code and catalog datasets
+# Copy application source code, operational scripts, and catalog datasets
 COPY --chown=appuser:appuser app/ ./app/
+COPY --chown=appuser:appuser scripts/ ./scripts/
 COPY --chown=appuser:appuser data/ ./data/
 COPY --chown=appuser:appuser artifacts/ ./artifacts/
 
@@ -39,6 +40,8 @@ EXPOSE 8000
 
 # Container healthcheck using backend /health endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+    CMD curl -f http://127.0.0.1:8000/api/v1/health || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run through the Python module and pin the application directory so an installed
+# package named "app" cannot shadow /app/app when Uvicorn resolves app.main.
+CMD ["python", "-m", "uvicorn", "app.main:app", "--app-dir", "/app", "--host", "0.0.0.0", "--port", "8000"]
