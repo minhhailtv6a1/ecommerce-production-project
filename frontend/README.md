@@ -31,7 +31,7 @@ NEXT_PUBLIC_SHOW_TEST_CATEGORIES=true
 
 Đây là URL công khai của API, không phải secret. Không thêm Pinecone key, Supabase service key, database password hoặc JWT secret vào frontend.
 
-`NEXT_PUBLIC_SHOW_TEST_CATEGORIES` là cờ giao diện tạm thời cho giai đoạn kiểm thử truy vấn category. Giữ `true` khi scale test; chuyển thành `false` rồi build lại để ẩn danh mục khỏi trang chủ, product card, product detail, catalog filter và visual-search filter mà không sửa source.
+`NEXT_PUBLIC_SHOW_TEST_CATEGORIES` là cờ giao diện tạm thời cho category của catalog. Giữ `true` khi scale test; chuyển thành `false` rồi build lại để ẩn danh mục khỏi trang chủ, product card, product detail và catalog filter mà không sửa source. Customer visual search luôn tìm trên toàn vector index và không phụ thuộc cờ này.
 
 ## Chạy local
 
@@ -71,7 +71,7 @@ Test không yêu cầu backend live. Bộ test hiện bao phủ:
 - Parser của error contract và lỗi mạng.
 - Định dạng giá VND.
 - Query string với nhiều `category_ids` và leading zero.
-- Multipart `FormData` cho visual search.
+- Multipart `FormData` cho visual search chỉ có ảnh và limit, không có model/category.
 - MIME và giới hạn 10 MiB của ảnh upload.
 - Product card render từ dữ liệu backend.
 - Empty state và API error state.
@@ -84,7 +84,7 @@ Test không yêu cầu backend live. Bộ test hiện bao phủ:
 | `/` | Giới thiệu visual search, danh mục và sản phẩm mới từ backend |
 | `/products` | Catalog, lọc đa danh mục, size, màu, brand, giá, tồn kho, sort và pagination |
 | `/products/[identifier]` | Gallery, thông tin sản phẩm và các variant thật |
-| `/visual-search` | Upload/preview ảnh, chọn danh mục thủ công và tìm sản phẩm tương đồng |
+| `/visual-search` | Upload/preview ảnh và tìm sản phẩm tương đồng bằng CLIP/Pinecone |
 | `/login` | Đăng nhập và giữ token trong memory |
 | `/register` | Đăng ký và giữ token trong memory |
 | `/cart` | Giỏ hàng server-side, cập nhật số lượng và xóa variant |
@@ -92,7 +92,10 @@ Test không yêu cầu backend live. Bộ test hiện bao phủ:
 | `/orders` | Lịch sử đơn hàng của user hiện tại |
 | `/orders/[orderId]` | Chi tiết và trạng thái đơn hàng authoritative |
 
-Sau khi login/register, header có nút **Kiểm tra /me** để gọi endpoint được bảo vệ. Nút **Đăng xuất** chỉ xóa token khỏi state frontend; backend không có token revocation.
+Sau khi login/register, header có nút **Kiểm tra /me** để gọi endpoint được bảo vệ.
+Auth user giữ role typed `customer | admin` do backend trả về để chuẩn bị route guard
+admin; backend vẫn là lớp phân quyền authoritative. Nút **Đăng xuất** chỉ xóa token
+khỏi state frontend; backend không có token revocation.
 
 ## API đã tích hợp
 
@@ -104,7 +107,7 @@ Sau khi login/register, header có nút **Kiểm tra /me** để gọi endpoint 
 - `GET /products/{id-or-slug}`
 - `POST /image-search/search`
   - Multipart field `image`.
-  - `category_ids` là field lặp và không bắt buộc.
+  - `limit` là field tùy chọn; customer visual search không gửi model hoặc category.
   - `limit` tối đa 50; UI gửi 50.
   - UI hiển thị `retrieval_time_ms`, là thời gian truy vấn RAG phía server gồm
     tạo CLIP embedding, tìm kiếm Pinecone và hydrate sản phẩm.
@@ -113,16 +116,10 @@ Sau khi login/register, header có nút **Kiểm tra /me** để gọi endpoint 
     server, upload và network, nhưng không đại diện cho thời gian render hoàn tất.
   - Tối đa 50 kết quả được phân trang ở frontend, 20 sản phẩm mỗi trang. Chuyển
     trang không chạy lại embedding hoặc truy vấn Pinecone.
-- `GET /image-search/classifiers`
-  - Trả capability thực tế của AlexNet, ResNet50 và ViT.
-  - Model chưa có artifact vẫn xuất hiện trên UI nhưng bị disabled với trạng thái
-    “Sắp tích hợp”.
-- `POST /image-search/classify`
-  - Multipart fields: `image`, `model_id`, `top_k=5`.
-  - UI hiển thị top 5 Softmax bằng progress bar, đưa các nhóm dự đoán lên đầu danh
-    sách và tự động tích duy nhất top 1.
-  - Người dùng có thể bỏ/chọn thêm category trước khi chạy vector retrieval.
-  - Toast kết quả tự biến mất sau 3 giây; panel dự đoán vẫn được giữ để kiểm tra.
+- `GET /image-search/classifiers` và `POST /image-search/classify` còn tồn tại tạm
+  thời ở backend trong giai đoạn chuyển đổi, nhưng storefront không gọi hai endpoint
+  này. Component dropdown/kết quả đã được chuyển sang boundary admin để tái sử dụng
+  khi RBAC và admin catalog hoàn thành.
 - `POST /auth/register`
 - `POST /auth/login`
 - `GET /auth/me`
@@ -145,15 +142,23 @@ Luồng visual search là:
 
 ```text
 chọn ảnh
-  → không dùng model: chọn category thủ công
-  → chọn model: classifying → predictions | classification-error
-  → người dùng xác nhận category
   → searching → success | empty | search-error
 ```
 
-Request classification/search đang chạy bị abort khi người dùng thay ảnh hoặc model.
-Đổi/xóa ảnh cũng reset prediction, category selection và search result cũ. Object
-URL của preview được revoke khi thay, xóa hoặc unmount.
+Request search đang chạy bị abort khi người dùng thay hoặc xóa ảnh. Đổi/xóa ảnh
+cũng reset search result cũ. Object URL của preview được revoke khi thay, xóa hoặc
+unmount.
+
+## Admin catalog (Phase 4)
+
+Tài khoản có role `admin` được chuyển tới `/admin` sau khi login. UI hỗ trợ
+list/filter product, tạo/sửa draft, gợi ý category top-5, quản lý variant và ảnh,
+publish/archive/restore. Customer chỉ nhận màn hình không đủ quyền; backend
+`require_admin` vẫn là lớp authorization có thẩm quyền.
+
+Classifier chỉ được gọi qua namespace `/api/v1/admin` với Bearer token. Hiện chỉ
+AlexNet có artifact thật; ResNet50 và ViT vẫn hiển thị unavailable. Token tiếp tục
+được giữ trong memory theo quyết định MVP, nên reload trang admin yêu cầu đăng nhập lại.
 
 ## Error handling
 
@@ -188,7 +193,8 @@ src/
 │   ├── auth/                    # In-memory auth provider
 │   ├── home/                    # Home integration view
 │   ├── products/                # Catalog/detail behavior
-│   └── visual-search/           # Upload validation và workflow
+│   ├── admin/classification/    # UI classifier dành cho admin catalog tương lai
+│   └── visual-search/           # Customer RAG thuần và upload validation
 ├── lib/
 │   ├── api/                     # HTTP client, parser và endpoint adapters
 │   ├── env.ts
@@ -200,8 +206,8 @@ src/
 
 - Checkout chỉ hỗ trợ COD; chưa có online payment, voucher, phí vận chuyển hoặc automatic fulfilment.
 - Backend chưa có idempotency key cho `POST /orders`; frontend chặn submit lặp trong phiên và xử lý lỗi mạng theo trạng thái không xác định.
-- Hiện chỉ AlexNet có artifact thật; ResNet50 và ViT được hiển thị disabled cho tới
-  khi backend công bố `available=true`.
+- Hiện chỉ AlexNet có artifact thật; ResNet50 và ViT chưa có artifact. Storefront
+  không tải classifier; các model này sẽ được dùng trong admin catalog ở phase sau.
 - Không có refresh token, backend logout/revocation, forgot password hoặc email verification.
 - Token không được persist; reload trang kết thúc phiên.
 - Client validation kiểm tra MIME và kích thước encoded. Backend vẫn là nguồn kiểm tra có thẩm quyền cho nội dung ảnh và pixel limit.
@@ -213,5 +219,5 @@ src/
 
 `BE_requirements.md` mô tả một giai đoạn cũ khi catalog và visual-search REST API
 chưa hoàn thành. Source route/schema hiện tại trong `backend/app/` và OpenAPI là
-nguồn sự thật cho integration này. Frontend hiện dùng cả capability,
-classification và visual retrieval endpoints.
+nguồn sự thật cho integration này. Customer frontend hiện chỉ dùng visual retrieval;
+classification được giữ lại cho module admin catalog tương lai.

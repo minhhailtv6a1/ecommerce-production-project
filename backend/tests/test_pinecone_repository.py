@@ -45,6 +45,10 @@ class FakeDocumentsApi:
             ]
         )
 
+    def delete(self, **kwargs: Any) -> SimpleNamespace:
+        self.calls.append(kwargs)
+        return SimpleNamespace()
+
 
 def test_document_repository_uses_documents_api_and_namespace() -> None:
     documents_api = FakeDocumentsApi()
@@ -135,3 +139,20 @@ def test_document_repository_partially_updates_and_fetches_fields() -> None:
         },
     ]
     assert fetched[0].product_id == "product-1"
+
+
+def test_document_repository_deletes_unique_ids_in_namespace() -> None:
+    documents_api = FakeDocumentsApi()
+    repository = PineconeDocumentRepository(
+        SimpleNamespace(documents=documents_api),
+        "image-vector-search",
+    )
+
+    repository.delete(["vector-1", "vector-1", "vector-2"])
+
+    assert documents_api.calls == [
+        {
+            "namespace": "image-vector-search",
+            "ids": ["vector-1", "vector-2"],
+        }
+    ]

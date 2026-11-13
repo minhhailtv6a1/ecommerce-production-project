@@ -78,6 +78,11 @@ export function Header() {
               Đơn hàng
             </Link>
           ) : null}
+          {session?.user.role === "admin" ? (
+            <Link href="/admin" aria-current={pathname.startsWith("/admin") ? "page" : undefined}>
+              Quản trị
+            </Link>
+          ) : null}
         </nav>
 
         <div className="auth-nav">

@@ -19,6 +19,7 @@ REQUIRED_USER_COLUMNS = {
     "email",
     "password_hash",
     "is_active",
+    "role",
     "created_at",
 }
 
@@ -28,9 +29,37 @@ CREATE TABLE IF NOT EXISTS public.users (
     email VARCHAR(320) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    role TEXT NOT NULL DEFAULT 'customer',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT users_email_lowercase CHECK (email = LOWER(email))
+    CONSTRAINT users_email_lowercase CHECK (email = LOWER(email)),
+    CONSTRAINT users_role_allowed CHECK (role IN ('customer', 'admin'))
 );
+"""
+
+MIGRATE_USER_ROLE_SQL = """
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role TEXT;
+UPDATE public.users SET role = 'customer' WHERE role IS NULL;
+ALTER TABLE public.users ALTER COLUMN role SET DEFAULT 'customer';
+ALTER TABLE public.users ALTER COLUMN role SET NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'public.users'::regclass
+          AND conname = 'users_role_allowed'
+          AND contype = 'c'
+    ) THEN
+        ALTER TABLE public.users
+        ADD CONSTRAINT users_role_allowed
+        CHECK (role IN ('customer', 'admin'));
+    END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS users_role_active_idx
+    ON public.users (role, is_active);
 """
 
 
@@ -56,6 +85,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "table": "users",
         "columns": sorted(REQUIRED_USER_COLUMNS),
         "unique": ["email"],
+        "roles": ["customer", "admin"],
+        "existing_user_backfill": "customer",
     }
     if not args.apply:
         print(json.dumps(plan, indent=2))
@@ -68,9 +99,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             existed = _users_table_exists(connection)
             with connection.cursor() as cursor:
                 cursor.execute(CREATE_USERS_SQL)
+                cursor.execute(MIGRATE_USER_ROLE_SQL)
                 _ensure_email_unique_index(cursor)
             connection.commit()
             _validate_users_columns(connection)
+            _validate_user_role_schema(connection)
         finally:
             connection.close()
     except (DatabaseConfigurationError, DatabaseConnectionError) as exc:
@@ -144,6 +177,46 @@ def _ensure_email_unique_index(cursor: object) -> None:
         cursor.execute(  # type: ignore[attr-defined]
             "CREATE UNIQUE INDEX users_email_unique_idx ON public.users (email)"
         )
+
+
+def _validate_user_role_schema(connection: object) -> None:
+    """Verify role invariants after creating or migrating public.users."""
+    with connection.cursor() as cursor:  # type: ignore[attr-defined]
+        cursor.execute(
+            """
+            SELECT is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'users'
+              AND column_name = 'role'
+            """
+        )
+        column = cursor.fetchone()
+        if column is None or column[0] != "NO" or "customer" not in str(column[1]):
+            raise RuntimeError(
+                "public.users.role must be NOT NULL with default 'customer'"
+            )
+
+        cursor.execute(
+            """
+            SELECT pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conrelid = 'public.users'::regclass
+              AND conname = 'users_role_allowed'
+              AND contype = 'c'
+            """
+        )
+        constraint = cursor.fetchone()
+        definition = str(constraint[0]) if constraint else ""
+        if "role" not in definition or "customer" not in definition or "admin" not in definition:
+            raise RuntimeError("public.users role constraint is missing or incompatible")
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM public.users WHERE role NOT IN ('customer', 'admin')"
+        )
+        invalid_count = int(cursor.fetchone()[0])
+        if invalid_count:
+            raise RuntimeError("public.users contains unsupported role values")
 
 
 if __name__ == "__main__":

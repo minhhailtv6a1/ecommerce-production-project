@@ -3,14 +3,14 @@ import type { ImageClassificationResponse } from "@/types/classification";
 
 interface ClassificationResultsProps {
   data: ImageClassificationResponse;
-  selectedCategories: string[];
-  onToggleCategory: (categoryId: string) => void;
+  selectedCategory: string | null;
+  onSelectCategory: (categoryId: string) => void;
 }
 
 export function ClassificationResults({
   data,
-  selectedCategories,
-  onToggleCategory,
+  selectedCategory,
+  onSelectCategory,
 }: ClassificationResultsProps) {
   return (
     <section className="prediction-panel" aria-labelledby="prediction-title">
@@ -18,7 +18,7 @@ export function ClassificationResults({
         <span className="prediction-success-mark" aria-hidden="true">✓</span>
         <div>
           <span className="prediction-eyebrow">Phân loại hoàn tất</span>
-          <h3 id="prediction-title">Ảnh của bạn được dự đoán thuộc các nhóm sau</h3>
+          <h3 id="prediction-title">Ảnh sản phẩm được dự đoán thuộc các nhóm sau</h3>
         </div>
       </header>
 
@@ -29,12 +29,12 @@ export function ClassificationResults({
       </div>
 
       <p className="prediction-intro">
-        Mức phần trăm là độ tin cậy của model. Bạn có thể chọn hoặc bỏ chọn bất kỳ nhóm nào trước khi tìm sản phẩm.
+        Mức phần trăm là độ tin cậy của model. Admin cần xác nhận danh mục chính xác trước khi lưu sản phẩm.
       </p>
 
       <div className="prediction-list" role="group" aria-label="Các nhóm sản phẩm được gợi ý">
         {data.predictions.map((prediction) => {
-          const selected = selectedCategories.includes(prediction.category_id);
+          const selected = selectedCategory === prediction.category_id;
           const topPrediction = prediction.rank === 1;
           return (
             <label
@@ -43,8 +43,9 @@ export function ClassificationResults({
             >
               <input
                 checked={selected}
-                onChange={() => onToggleCategory(prediction.category_id)}
-                type="checkbox"
+                name="admin-category-suggestion"
+                onChange={() => onSelectCategory(prediction.category_id)}
+                type="radio"
               />
               <span className="prediction-rank" aria-hidden="true">
                 {String(prediction.rank).padStart(2, "0")}
@@ -73,7 +74,7 @@ export function ClassificationResults({
 
       <footer className="prediction-footer">
         <span aria-hidden="true">i</span>
-        <p>Nhóm đầu tiên được chọn sẵn để hỗ trợ lọc vector database, nhưng bạn luôn có quyền thay đổi.</p>
+        <p>Nhóm đầu tiên chỉ là gợi ý được chọn sẵn. Danh mục do admin xác nhận mới là dữ liệu chính thức của sản phẩm.</p>
       </footer>
     </section>
   );

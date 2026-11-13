@@ -47,10 +47,11 @@ function nullableInputSize(
 }
 
 export async function getClassifiers(
+  token: string,
   signal?: AbortSignal,
 ): Promise<ClassifierListResponse> {
   const payload = record(
-    await requestJson("/image-search/classifiers", { signal }),
+    await requestJson("/admin/classifiers", { signal, token }),
     "danh sách model",
   );
   return {
@@ -85,12 +86,14 @@ export function buildClassificationFormData(
 
 export async function classifyImage(
   input: ClassifyImageRequest,
+  token: string,
   signal?: AbortSignal,
 ): Promise<ImageClassificationResponse> {
   return parseImageClassificationResponse(
-    await requestJson("/image-search/classify", {
+    await requestJson("/admin/classification/predict", {
       method: "POST",
       body: buildClassificationFormData(input),
+      token,
       signal,
     }),
   );

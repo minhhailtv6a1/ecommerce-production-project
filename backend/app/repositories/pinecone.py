@@ -62,6 +62,15 @@ class PineconeDocumentRepository:
             documents=documents,
         )
 
+    def delete(self, ids: Sequence[str]) -> None:
+        """Idempotently remove documents by stable vector ID."""
+        if not ids:
+            return
+        self._documents.delete(
+            namespace=self._namespace,
+            ids=list(dict.fromkeys(ids)),
+        )
+
     def fetch_fields(
         self,
         ids: Sequence[str],

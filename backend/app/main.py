@@ -13,7 +13,8 @@ from app.api.routes.commerce import router as commerce_router
 from app.api.routes.categories import router as categories_router
 from app.api.routes.health import router as health_router
 from app.api.routes.image_search import router as image_search_router
-from app.api.routes.image_classification import router as image_classification_router
+from app.api.routes.admin_classification import router as admin_classification_router
+from app.api.routes.admin_products import router as admin_products_router
 from app.api.routes.products import router as products_router
 from app.core.config import settings
 
@@ -144,4 +145,5 @@ app.include_router(categories_router, prefix=settings.api_prefix)
 app.include_router(products_router, prefix=settings.api_prefix)
 app.include_router(commerce_router, prefix=settings.api_prefix)
 app.include_router(image_search_router, prefix=settings.api_prefix)
-app.include_router(image_classification_router, prefix=settings.api_prefix)
+app.include_router(admin_classification_router, prefix=settings.api_prefix)
+app.include_router(admin_products_router, prefix=settings.api_prefix)

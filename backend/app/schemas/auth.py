@@ -18,6 +18,8 @@ def _validate_email(value: str) -> str:
 
 
 class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: str = Field(min_length=3, max_length=320, examples=["user@example.com"])
     password: SecretStr = Field(min_length=8, max_length=128, examples=["12345678"])
 
@@ -25,6 +27,8 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: str = Field(min_length=3, max_length=320, examples=["user@example.com"])
     password: SecretStr = Field(min_length=1, max_length=128, examples=["12345678"])
 
@@ -37,6 +41,7 @@ class UserResponse(BaseModel):
     id: UUID = Field(examples=["d384ece2-1b19-4c21-afd4-841405bb1690"])
     email: str = Field(min_length=3, max_length=320, examples=["user@example.com"])
     is_active: bool = Field(examples=[True])
+    role: Literal["customer", "admin"] = Field(examples=["customer"])
     created_at: datetime = Field(examples=["2025-01-01T00:00:00+00:00"])
 
 

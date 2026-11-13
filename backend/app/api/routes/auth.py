@@ -149,6 +149,18 @@ def require_current_user(
     return user
 
 
+def require_admin(
+    user: UserRecord = Depends(require_current_user),
+) -> UserRecord:
+    """Require an active authenticated administrator from authoritative DB state."""
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator access is required",
+        )
+    return user
+
+
 @router.get(
     "/me",
     response_model=UserResponse,

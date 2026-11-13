@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping, cast
 from uuid import UUID, uuid4
 
 
@@ -16,6 +16,9 @@ class UserRepositoryError(RuntimeError):
     """Raised when PostgreSQL user persistence fails."""
 
 
+UserRole = Literal["customer", "admin"]
+
+
 @dataclass(frozen=True)
 class UserRecord:
     """User data used by authentication business logic."""
@@ -24,6 +27,7 @@ class UserRecord:
     email: str
     password_hash: str
     is_active: bool
+    role: UserRole
     created_at: datetime
 
 
@@ -37,7 +41,7 @@ class PostgresUserRepository:
         try:
             row = self._fetch_one(
                 """
-                SELECT id, email, password_hash, is_active, created_at
+                SELECT id, email, password_hash, is_active, role, created_at
                 FROM public.users
                 WHERE email = %s
                 """,
@@ -51,7 +55,7 @@ class PostgresUserRepository:
         try:
             row = self._fetch_one(
                 """
-                SELECT id, email, password_hash, is_active, created_at
+                SELECT id, email, password_hash, is_active, role, created_at
                 FROM public.users
                 WHERE id = %s
                 """,
@@ -67,7 +71,7 @@ class PostgresUserRepository:
                 """
                 INSERT INTO public.users (id, email, password_hash)
                 VALUES (%s, %s, %s)
-                RETURNING id, email, password_hash, is_active, created_at
+                RETURNING id, email, password_hash, is_active, role, created_at
                 """,
                 (uuid4(), email, password_hash),
             )
@@ -105,5 +109,13 @@ def _row_to_user(row: Mapping[str, Any]) -> UserRecord:
         email=str(row["email"]),
         password_hash=str(row["password_hash"]),
         is_active=bool(row["is_active"]),
+        role=_parse_role(row["role"]),
         created_at=row["created_at"],
     )
+
+
+def _parse_role(value: object) -> UserRole:
+    role = str(value)
+    if role not in {"customer", "admin"}:
+        raise UserRepositoryError(f"Unsupported user role in PostgreSQL: {role}")
+    return cast(UserRole, role)

@@ -4,7 +4,7 @@
 
 You are the AI coding agent responsible for developing and maintaining the backend of an image-based product search website.
 
-The system allows users to upload an image, receive predicted product-category labels from a Deep Learning model, select one or more categories, and retrieve visually similar products using a Retrieval-Augmented Generation (RAG) pipeline backed by a vector database.
+The customer-facing system allows users to upload an image and retrieve visually similar products directly through a CLIP/Pinecone Retrieval-Augmented Generation (RAG) pipeline. Deep Learning category classification is reserved for the planned admin catalog workflow, where it suggests categories while an admin creates or edits a product.
 
 ### Technology Stack
 
@@ -35,9 +35,9 @@ Act as a pragmatic Backend Engineer with experience in:
 Your responsibilities include:
 
 1. Implementing and maintaining API endpoints.
-2. Integrating the trained image classification model into the backend.
+2. Integrating trained image classification models as admin catalog-assistance tools.
 3. Converting model outputs into stable, frontend-friendly response schemas.
-4. Implementing product retrieval using Pinecone and category filters.
+4. Implementing customer product retrieval using Pinecone without classifier-driven category filters.
 5. Integrating product metadata and related data from Supabase.
 6. Building scripts for data preparation, embedding generation, index ingestion, evaluation, and other repeatable pipeline tasks when required.
 7. Writing tests and documenting setup, execution, and configuration.
@@ -47,41 +47,41 @@ Do not implement unrelated frontend features unless explicitly requested.
 
 ## 3. Business Requirements
 
-### 3.1 Image Classification
+### 3.1 Admin Catalog Classification
 
-When a user uploads an image:
+When an authorized admin requests a category suggestion for a product image:
 
 1. Validate the uploaded file.
-2. Apply the same preprocessing used during model training and validation.
-3. Run inference with the trained classification model.
-4. Calculate probabilities using Softmax.
-5. Rank all predicted classes by probability in descending order.
-6. Return the predicted category and ranked category suggestions to the frontend.
+2. Apply the exact preprocessing used during model training and validation.
+3. Run inference with the selected trained classification model.
+4. Calculate probabilities using Softmax over all 42 classes.
+5. Rank predicted classes by probability in descending order.
+6. Return top category suggestions for explicit admin review.
 
-The classification model assists product retrieval. It does not directly retrieve products and must not be treated as the product database.
+The classifier is a catalog data-entry assistant. It does not retrieve products, publish products, or decide the authoritative category. The admin must be able to override top-1 and confirm exactly one canonical category before the product is saved or published.
 
-Do not hard-code the predicted category as the only permitted search category.
+`require_admin` reads the authoritative role from PostgreSQL. Classification is
+available only through `/api/v1/admin/classifiers` and
+`/api/v1/admin/classification/predict`; the old public classification routes are
+not registered. Admin catalog mutations live under `/api/v1/admin/products`.
+Publishing synchronously indexes the primary image before PostgreSQL becomes
+`published`; a failure keeps the product draft and a repeated publish is the MVP
+retry. Archive is a soft delete that removes derived Pinecone vectors.
 
-The user must be able to select, deselect, or combine categories before submitting a product search.
+### 3.2 Customer Product Retrieval
 
-The predicted category is a suggestion, not a mandatory filter.
+Customer visual search is independent of classification and category confirmation. Its public flow is:
 
-### 3.2 Category Selection and Product Retrieval
+1. Receive and validate one query image plus an optional result limit.
+2. Generate a CLIP query embedding using the verified preprocessing pipeline.
+3. Search Pinecone by vector similarity without a predicted-category metadata filter.
+4. Hydrate authoritative published product records from PostgreSQL/Supabase.
+5. Preserve vector ranking while handling stale or missing product records.
+6. Return ranked results and server-side retrieval timing.
 
-After receiving the classification results, the frontend allows the user to select one or more categories.
+The public customer route must not accept or forward classifier/model IDs or category IDs. Repository-level metadata filtering may remain available for internal evaluation or future admin operations, but customer retrieval passes an empty category filter.
 
-The backend should use the selected categories to narrow the eligible product set before or during vector retrieval.
-
-The intended retrieval flow is:
-
-1. Receive the query image and/or its embedding, together with selected category identifiers.
-2. Validate the requested category identifiers.
-3. Generate a query embedding using the agreed embedding model and preprocessing pipeline.
-4. Search Pinecone using vector similarity and supported metadata filters.
-5. Retrieve relevant product records and metadata.
-6. Return ranked results to the frontend.
-
-Use the trained 42-class classifier for category prediction. Do not assume that classifier logits or Softmax probabilities are interchangeable with vector embeddings.
+Use the trained 42-class classifier only for admin category suggestions. Do not assume that classifier logits or Softmax probabilities are interchangeable with vector embeddings.
 
 Do not assume that AlexNet's classification output is a suitable product-search embedding. Use a separately defined embedding model or a validated feature-extraction approach for similarity search.
 
@@ -293,6 +293,16 @@ Do not create all possible scripts preemptively. Implement only those required b
 - Make model paths, device settings, index names, embedding configuration, and service endpoints configurable.
 - Follow the repository's existing dependency management and version constraints.
 
+### Admin Authorization and Catalog Lifecycle
+
+- Public registration must create customers only; never accept a client-supplied admin role.
+- Admin catalog and classification endpoints must enforce authorization with a backend dependency. Hiding frontend controls is not security.
+- PostgreSQL is authoritative for product category, price, inventory, status, variants, and image records. Pinecone metadata and Storage objects are derived external state.
+- Classifier top-k output is advisory. Only the category explicitly confirmed by an admin may be persisted as `products.category_id`.
+- Use the existing `draft -> published -> archived` lifecycle. Default delete behavior is archive, not hard delete.
+- Publishing must validate catalog invariants and keep Storage/Pinecone synchronization recoverable and idempotent. Do not expose a product publicly while required indexing is known to have failed.
+- Return `401` for missing/invalid authentication and `403` for an authenticated non-admin through the implemented `require_admin` dependency.
+
 ## 10. Code Quality and Testing
 
 Before changing code:
@@ -319,7 +329,7 @@ Never claim that tests pass if they have not been run successfully.
 
 ## 11. Performance and Retrieval Quality
 
-- Filter the eligible product categories before or during vector search whenever supported by the index schema.
+- Keep customer vector retrieval unfiltered by classifier predictions; only add filters to a different flow when the contract and measurements justify them.
 - Avoid retrieving the entire vector database into application memory to perform filtering locally.
 - Use Pinecone's supported metadata-filtering capabilities where applicable.
 - Set a sensible retrieval limit and make it configurable.
@@ -328,7 +338,7 @@ Never claim that tests pass if they have not been run successfully.
 - Measure retrieval latency and relevance rather than assuming a design is faster.
 - Consider the trade-offs between category filtering, recall, and ranking quality.
 - Do not interpret the classifier's category confidence as the similarity score of a retrieved product.
-- Do not assume that filtering by a predicted category always improves retrieval quality; the user may select multiple categories or override the initial prediction.
+- Do not assume metadata filtering is faster or more relevant. Benchmark p50/p95 latency, recall, and ranking quality before introducing it into any retrieval flow.
 
 ## 12. Agent Execution Rules
 

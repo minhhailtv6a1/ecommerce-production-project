@@ -74,7 +74,7 @@ export function ClassifierModelSelect({
       {
         id: "none",
         name: "Không dùng model",
-        description: "Tự chọn danh mục tìm kiếm",
+        description: "Tự chọn danh mục sản phẩm",
         available: true,
         mark: getModelMark("none"),
         status: "Thủ công",
@@ -199,7 +199,7 @@ export function ClassifierModelSelect({
       {open ? (
         <div aria-labelledby={labelId} className="model-picker-menu" id={listboxId} role="listbox">
           <div className="model-picker-menu-heading">
-            <strong>Chọn cách phân loại</strong>
+            <strong>Chọn model gợi ý danh mục</strong>
             <span>Mỗi lần chỉ sử dụng một model</span>
           </div>
           <div className="model-picker-options">

@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS public.products (
     brand TEXT,
     status TEXT NOT NULL DEFAULT 'draft',
     currency CHAR(3) NOT NULL DEFAULT 'VND',
+    created_by UUID REFERENCES public.users(id),
+    updated_by UUID REFERENCES public.users(id),
+    version INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT products_status_allowed
@@ -77,14 +80,20 @@ CREATE TABLE IF NOT EXISTS public.product_images (
     product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
     variant_id UUID REFERENCES public.product_variants(id) ON DELETE SET NULL,
     pinecone_vector_id TEXT NOT NULL UNIQUE,
-    source_path TEXT NOT NULL UNIQUE,
+    source_path TEXT UNIQUE,
     storage_path TEXT NOT NULL UNIQUE,
     public_url TEXT,
     alt_text TEXT NOT NULL,
     sort_order SMALLINT NOT NULL DEFAULT 0,
     is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+    index_status TEXT NOT NULL DEFAULT 'pending',
+    indexed_at TIMESTAMPTZ,
+    index_error TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT product_images_sort_order_nonnegative CHECK (sort_order >= 0)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT product_images_sort_order_nonnegative CHECK (sort_order >= 0),
+    CONSTRAINT product_images_index_status_allowed
+        CHECK (index_status IN ('pending', 'indexing', 'indexed', 'failed', 'removed'))
 );
 
 CREATE INDEX IF NOT EXISTS products_category_status_idx

@@ -1,5 +1,6 @@
 """Tests for registration, login, and access-token business logic."""
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -34,6 +35,7 @@ class FakeUsers:
             email=email,
             password_hash=password_hash,
             is_active=True,
+            role="customer",
             created_at=datetime.now(timezone.utc),
         )
         self.by_email[email] = user
@@ -83,6 +85,7 @@ def test_register_normalizes_email_hashes_password_and_issues_token() -> None:
 
     assert result.user.email == "user@example.com"
     assert result.user.password_hash == "hashed:secret123"
+    assert result.user.role == "customer"
     assert users.by_email["user@example.com"] == result.user
     assert result.token.value.startswith("token-for-")
     assert result.token.expires_in == 1800
@@ -107,7 +110,7 @@ def test_login_uses_generic_error_for_unknown_email_or_wrong_password() -> None:
 
 
 def test_current_user_requires_valid_token_and_active_user() -> None:
-    service, _, _ = build_service()
+    service, users, _ = build_service()
     registered = service.register(email="user@example.com", password="secret123")
 
     current = service.current_user(registered.token.value)
@@ -115,3 +118,11 @@ def test_current_user_requires_valid_token_and_active_user() -> None:
     assert current.id == registered.user.id
     with pytest.raises(UnauthorizedError):
         service.current_user("invalid-token")
+
+    users.by_email[registered.user.email] = replace(
+        registered.user,
+        is_active=False,
+        role="admin",
+    )
+    with pytest.raises(UnauthorizedError):
+        service.current_user(registered.token.value)
